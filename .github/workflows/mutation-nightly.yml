@@ -3,25 +3,27 @@ name: Mutation Nightly
 # Full allowlist mutation gate runs on main overnight (and on demand).
 # Pull requests are NOT blocked by mutation — they keep lint + coverage + agent review.
 on:
-  schedule:
-    # 08:00 UTC daily
-    - cron: "0 8 * * *"
+  # Temporarily disabled automatic runs (cron + push) to prevent consuming remaining Actions quota.
+  # Mutation testing can still be run on demand via workflow_dispatch.
+  # schedule:
+  #   # 08:00 UTC daily
+  #   - cron: "0 8 * * *"
+  # push:
+  #   branches:
+  #     - main
+  #   paths:
+  #     - "app/pipeline/**"
+  #     - "app/adapters/**"
+  #     - "app/extraction/**"
+  #     - "app/models/**"
+  #     - "app/db/repository.py"
+  #     - "app/db/connection.py"
+  #     - "app/db/__init__.py"
+  #     - "scripts/run_mutation_on_diff.py"
+  #     - "scripts/check_mutation_score.py"
+  #     - "pyproject.toml"
+  #     - ".github/workflows/mutation-nightly.yml"
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - "app/pipeline/**"
-      - "app/adapters/**"
-      - "app/extraction/**"
-      - "app/models/**"
-      - "app/db/repository.py"
-      - "app/db/connection.py"
-      - "app/db/__init__.py"
-      - "scripts/run_mutation_on_diff.py"
-      - "scripts/check_mutation_score.py"
-      - "pyproject.toml"
-      - ".github/workflows/mutation-nightly.yml"
 
 concurrency:
   group: mutation-nightly-${{ github.ref }}
