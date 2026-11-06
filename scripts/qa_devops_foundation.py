@@ -127,6 +127,11 @@ def test_ci_cd_workflow(root_dir: Path) -> None:
         "--full-allowlist" in nightly and "check_mutation_score.py" in nightly,
     )
     assert_condition(
+        "Nightly mutation runs on Watchtower self-hosted",
+        "runs-on: [self-hosted, watchtower]" in nightly
+        and "runs-on: ubuntu-latest" not in nightly,
+    )
+    assert_condition(
         "Nightly mutation job does not install Playwright",
         "playwright install" not in nightly,
     )
@@ -137,6 +142,15 @@ def test_ci_cd_workflow(root_dir: Path) -> None:
     assert_condition(
         "Nightly mutation cache key includes mutmut version fingerprint",
         "mutmut_ver" in nightly and "config_hash" in nightly,
+    )
+    assert_condition(
+        "Nightly mutation cache key omits commit SHA",
+        any(
+            line.strip().startswith("key:")
+            and "mutmut-nightly-" in line
+            and "github.sha" not in line
+            for line in nightly.splitlines()
+        ),
     )
 
 
