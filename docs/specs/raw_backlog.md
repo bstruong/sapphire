@@ -16,3 +16,4 @@ To schedule work: shape a pitch from [`PITCH_TEMPLATE.md`](PITCH_TEMPLATE.md), a
 - Full Grafana Tempo / Prometheus / Loki dashboards beyond collector smoke (depends on Watchtower telemetry pitch)
 - Traefik ingress hardening notes for Vault deployment
 - Transaction → envelope linking (if circuit-broken out of YNAB budgets Small Batch)
+- ARC / scale-to-zero runners and moving all PR CI onto Watchtower (leftovers if circuit-broken from CI reliability Small Batch)
