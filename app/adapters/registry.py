@@ -14,6 +14,7 @@ from pathlib import Path
 
 from app.adapters.base import StatementAdapter
 from app.adapters.chase import ChaseDepositoryAdapter
+from app.adapters.chase_credit_card import ChaseCreditCardAdapter
 from app.adapters.combined import StandardCombinedDepositoryAdapter
 from app.adapters.credit_card import StandardCreditCardAdapter
 from app.adapters.depository import StandardDepositoryAdapter
@@ -179,6 +180,7 @@ def get_default_registry() -> AdapterRegistry:
         adapters=[
             StandardDepositoryAdapter(),
             ChaseDepositoryAdapter(),
+            ChaseCreditCardAdapter(),
             StandardCreditCardAdapter(),
             SchwabAdapter(),
             VanguardAdapter(),

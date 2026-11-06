@@ -1,3 +1,4 @@
+import re
 import subprocess
 import time
 
@@ -124,6 +125,10 @@ def test_manual_ui_nav_path(page: Page, live_server: str):
             "buffer": b"not a pdf",
         },
     )
+    expect(page.locator("#upload-prompt")).to_contain_text(
+        "not-a-pdf.txt", timeout=5000
+    )
+    expect(page.locator("#upload-dropzone")).to_have_class(re.compile(r"has-file"))
     page.locator("#upload-btn").click()
     expect(page.locator("[role='alert']")).to_contain_text(
         "Nothing was saved", timeout=5000

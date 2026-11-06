@@ -286,6 +286,8 @@ def main() -> int:
         and 'id="upload-form"' in stmt_resp.text
         and 'id="upload-dropzone"' in stmt_resp.text
         and 'id="statement-file"' in stmt_resp.text
+        and 'id="upload-prompt"' in stmt_resp.text
+        and 'id="upload-filename"' in stmt_resp.text
         and 'id="upload-btn"' in stmt_resp.text
         and "style=" not in stmt_resp.text
     ):
@@ -294,6 +296,19 @@ def main() -> int:
         )
     else:
         _fail("Statements view missing upload form, dropzone, or privacy notice")
+        failures += 1
+
+    dash = client.get("/dashboard")
+    if (
+        dash.status_code == 200
+        and "statement-file" in dash.text
+        and ".files" in dash.text
+    ):
+        _pass(
+            "Dashboard shell wires change handler to show chosen filename in dropzone"
+        )
+    else:
+        _fail("Dashboard shell missing file-input change handler for dropzone label")
         failures += 1
 
     # Negative invalid upload

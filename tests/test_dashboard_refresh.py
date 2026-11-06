@@ -326,12 +326,19 @@ class TestStatementsView:
         assert 'id="upload-dropzone"' in html
         assert 'for="statement-file"' in html
         assert 'id="statement-file"' in html
+        assert 'id="upload-prompt"' in html
+        assert 'id="upload-filename"' in html
         assert 'accept="application/pdf,.pdf"' in html
         assert 'id="upload-btn"' in html
         assert "Upload to Vault" in html
         assert "never leave the Vault" in html
         assert "No statements yet" in html
         assert "style=" not in html
+        # Shell must update the dropzone label when a file is chosen (hidden input).
+        shell = client.get("/dashboard").text
+        assert 'id="statement-file"' in shell or "statement-file" in shell
+        assert "upload-prompt" in shell
+        assert "files[0]" in shell or "files &&" in shell or ".files" in shell
 
     def test_lists_recent_statements(self, client: TestClient, tmp_path: Path) -> None:
         _upload(client, tmp_path, "chase_checking_happy")

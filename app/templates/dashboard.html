@@ -166,6 +166,30 @@
             window.scrollTo({ top: 0 });
         });
 
+        // Hidden file input: surface the chosen basename in the dropzone label.
+        document.body.addEventListener("change", function (event) {
+            var input = event.target;
+            if (!input || input.id !== "statement-file") {
+                return;
+            }
+            var dropzone = document.getElementById("upload-dropzone");
+            var prompt = document.getElementById("upload-prompt");
+            var filename = document.getElementById("upload-filename");
+            if (!dropzone || !prompt || !filename) {
+                return;
+            }
+            var chosen = input.files && input.files[0] ? input.files[0].name : "";
+            if (chosen) {
+                prompt.textContent = chosen;
+                filename.textContent = "Ready to upload · stays on this Vault";
+                dropzone.classList.add("has-file");
+            } else {
+                prompt.textContent = "Drop a PDF here or click to choose";
+                filename.textContent = "PDF only · parsed on this Vault";
+                dropzone.classList.remove("has-file");
+            }
+        });
+
         document.body.addEventListener("htmx:beforeSwap", function (event) {
             var xhr = event.detail.xhr;
             if (!xhr || !xhr.responseURL) {

@@ -1,0 +1,35 @@
+{
+  "institution": "Chase",
+  "account_type": "Credit Card",
+  "card_mask": "*0001",
+  "statement_period": "2026-09-01 to 2026-09-30",
+  "payment_due_date": "2026-10-25",
+  "minimum_payment_due": "$49.78",
+  "adapter_profile": "sapphire-chase-card",
+  "synthetic_seed": 42,
+  "source_doc_id": "doc_e58cb66ee0aa",
+  "source_had_tokens": true,
+  "source_had_money": true,
+  "summary": {
+    "previous_balance": "$1,185.53",
+    "payments_credits": "$326.17",
+    "purchases": "$136.43",
+    "cash_advances": "$0.00",
+    "balance_transfers": "$0.00",
+    "fees_charged": "$0.00",
+    "interest_charged": "$0.00",
+    "new_balance": "$995.79"
+  },
+  "summary_cents": {
+    "previous_balance_cents": 118553,
+    "payments_credits_cents": 32617,
+    "purchases_cents": 13643,
+    "cash_advances_cents": 0,
+    "balance_transfers_cents": 0,
+    "fees_charged_cents": 0,
+    "interest_charged_cents": 0,
+    "new_balance_cents": 99579,
+    "minimum_payment_due_cents": 4978
+  },
+  "raw_text": "JPMorgan Chase\nChase Credit Card Statement\nCard Number: *0001\nStatement Period: 2026-09-01 to 2026-09-30\nPayment Due Date: 2026-10-25\nMinimum Payment Due: $49.78\n\nACCOUNT SUMMARY\nPrevious Balance: $1,185.53\nPayments and Credits: $326.17\nPurchases: $136.43\nCash Advances: $0.00\nBalance Transfers: $0.00\nFees Charged: $0.00\nInterest Charged: $0.00\nNew Balance: $995.79\n\nTRANSACTIONS\nDate    Description    Amount\n2026-09-05    SYNTHETIC Payment Received    -$326.17\n2026-09-12    SYNTHETIC Retail Purchase    +$136.43\nEND OF STATEMENT\n"
+}

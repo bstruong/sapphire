@@ -275,6 +275,12 @@ button { cursor: pointer; }
 .dropzone:hover, .dropzone:focus-within {
   border-color: var(--accent); background: var(--accent-soft);
 }
+.dropzone.has-file {
+  border-style: solid; border-color: var(--accent); background: var(--accent-soft);
+}
+.dropzone.has-file .strong {
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .dropzone .icon { width: 28px; height: 28px; color: var(--accent); }
 .input-file-hidden {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
