@@ -68,8 +68,15 @@ def main() -> int:
         "mutation:" not in ci and "check_mutation_score.py" not in ci,
     )
     check(
-        "6. Nightly workflow runs full allowlist mutation",
-        "--full-allowlist" in nightly and "check_mutation_score.py" in nightly,
+        "6. Nightly workflow keeps opt-in full + default critical/diff modes",
+        "--full-allowlist" in nightly
+        and "--critical-only" in nightly
+        and "check_mutation_score.py" in nightly
+        and "schedule:" not in nightly,
+    )
+    check(
+        "6. Runner supports critical-only mode",
+        "--critical-only" in runner and "list_critical_modules" in runner,
     )
     check(
         "6. Nightly mutation job skips Playwright install",

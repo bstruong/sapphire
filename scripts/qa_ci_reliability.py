@@ -63,9 +63,9 @@ def test_mutation_self_hosted_policy(nightly: str) -> None:
         "runs-on: ubuntu-latest" not in nightly,
     )
     assert_condition(
-        "weekly schedule cron present (Sunday 08:00 UTC)",
-        'cron: "0 8 * * 0"' in nightly or "cron: '0 8 * * 0'" in nightly,
-        "Full-allowlist is weekly, not daily github-hosted.",
+        "no weekly/full schedule cron (diff is default cost center)",
+        "schedule:" not in nightly and "cron:" not in nightly,
+        "Full-allowlist must be opt-in workflow_dispatch, not a standing cron.",
     )
     assert_condition(
         "path-filtered push on main is enabled (not commented out)",
@@ -74,8 +74,11 @@ def test_mutation_self_hosted_policy(nightly: str) -> None:
         and "# Temporarily disabled automatic runs" not in nightly,
     )
     assert_condition(
-        "workflow_dispatch remains for on-demand full runs",
-        "workflow_dispatch:" in nightly,
+        "workflow_dispatch has full_allowlist input defaulting false",
+        "workflow_dispatch:" in nightly
+        and "full_allowlist:" in nightly
+        and "default: false" in nightly,
+        "Dispatch default must be fast; full audit is opt-in.",
     )
     assert_condition(
         "score gate still enforces classic >=55% and max-no-tests 0",
@@ -84,9 +87,12 @@ def test_mutation_self_hosted_policy(nightly: str) -> None:
         and "--max-no-tests 0" in nightly,
     )
     assert_condition(
-        "full-allowlist used for schedule/dispatch (not only push)",
-        "--full-allowlist" in nightly and 'github.event_name }}" = "push"' in nightly,
-        "Push → diff; schedule/dispatch → --full-allowlist.",
+        "push uses diff / critical-only; full-allowlist only when input true",
+        "--full-allowlist" in nightly
+        and "--critical-only" in nightly
+        and "MUTATION_DIFF_BASE" in nightly
+        and 'inputs.full_allowlist }}" = "true"' in nightly,
+        "Push → diff (before SHA); dispatch default → critical-only; full is opt-in.",
     )
     cache_key_lines = [
         line for line in nightly.splitlines() if line.strip().startswith("key:")

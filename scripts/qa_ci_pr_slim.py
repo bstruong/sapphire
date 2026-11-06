@@ -98,7 +98,9 @@ def test_hosting_and_scope(ci: str, nightly: str) -> None:
     )
     assert_condition(
         "mutation-nightly.yml left untouched by Track 1 policy checks",
-        "check_mutation_score.py" in nightly and "--full-allowlist" in nightly,
+        "check_mutation_score.py" in nightly
+        and "--full-allowlist" in nightly
+        and "--critical-only" in nightly,
         "Track 2 owns mutation redraw; this script only confirms nightly still exists.",
     )
 

@@ -17,7 +17,7 @@ Mutation is the **Actions-minute** killer (homelab [PR #33](https://github.com/b
 
 ## Appetite
 
-**Small Batch (2 weeks).** Good enough: (1) GitHub-hosted PR CI that caches Playwright and skips E2E/browser install on docs-only paths while keeping the ≥90% cov gate on app changes; (2) mutation **kept and redrawn** onto a self-hosted Watchtower runner (diff + weekly full / dispatch), still **off** the PR merge path; (3) Option-1 runner online from homelab-k3s. If time runs out, ship Track 1 + dispatch-only mutation on self-hosted with a documented DB fallback — do not silently extend.
+**Small Batch (2 weeks).** Good enough: (1) GitHub-hosted PR CI that caches Playwright and skips E2E/browser install on docs-only paths while keeping the ≥90% cov gate on app changes; (2) mutation **kept and redrawn** onto a self-hosted Watchtower runner (path-filtered **diff** default; dispatch critical-only / opt-in full — **no weekly cron**), still **off** the PR merge path; (3) Option-1 runner online from homelab-k3s. If time runs out, ship Track 1 + dispatch-only mutation on self-hosted with a documented DB fallback — do not silently extend.
 
 ## Mutation keep / redraw verdict
 
@@ -26,7 +26,7 @@ Mutation is the **Actions-minute** killer (homelab [PR #33](https://github.com/b
 | Keep mutation? | **Yes** — valuable for the financial allowlist (especially `app/pipeline/validator.py` **100% kill** / zero survivors + classic `killed/(killed+survived) ≥ 55%`, `no_tests == 0`). |
 | Keep as PR required check? | **No** — stays off the merge path (unchanged product call). |
 | Full-allowlist every night on `ubuntu-latest`? | **No** — burns free-tier minutes; not worth the quota cost. |
-| Redraw | Self-hosted `[self-hosted, watchtower]`: path-filtered **diff** on `main` + **weekly** full-allowlist (or `workflow_dispatch` full); fix mutmut cache key (drop `${{ github.sha }}`); align `AGENTS.md` with reality. |
+| Redraw | Self-hosted `[self-hosted, watchtower]`: path-filtered **diff** on `main` (default); `workflow_dispatch` critical-only by default, opt-in `full_allowlist=true` for rare audits (**no weekly cron**); fix mutmut cache key (drop `${{ github.sha }}`); align `AGENTS.md` with reality. |
 
 ## Solution (breadboard)
 
@@ -37,8 +37,8 @@ flowchart TD
   hosted --> test[Test_job]
   test --> cachePW[Cached_Playwright]
   test --> pathSkip[Docs_skip_E2E]
-  mutEvent[schedule_or_dispatch] --> watch[self-hosted_watchtower]
-  watch --> mut[mutmut_diff_or_weekly_full]
+  mutEvent[push_diff_or_dispatch] --> watch[self-hosted_watchtower]
+  watch --> mut[mutmut_diff_or_critical_or_optin_full]
   homelab[homelab_k3s_Deployment] --> watch
 ```
 
@@ -54,9 +54,9 @@ flowchart TD
 ### Track 2 — Mutation redraw (sapphire)
 
 1. Keep invariants above; still **not** a PR required check.
-2. Default automation on self-hosted: path-filtered diff on `main` + weekly full-allowlist (or dispatch full).
+2. Default automation on self-hosted: path-filtered **diff** on `main`; dispatch default **critical-only**; opt-in `full_allowlist=true` for rare full audits (**drop weekly cron** as cost center).
 3. Fix mutmut cache key so cache hits across commits.
-4. Align `AGENTS.md` (no “nightly always on github-hosted”).
+4. Align `AGENTS.md` (no “nightly always on github-hosted”; no “weekly full is the main gate”).
 5. Executable policy QA: e.g. `scripts/qa_ci_reliability.py` asserting no mutmut on `ci.yml`, mutation `runs-on` self-hosted, docs path skip present.
 
 ### Track 3 — Watchtower runner (homelab-k3s)
@@ -64,7 +64,7 @@ flowchart TD
 1. Land / fold `docs/ci-runner-migration-plan.md` from [homelab #33](https://github.com/bstruong/homelab-k3s/pull/33).
 2. Seal registration token → `manifests/watchtower/github-runner/` Deployment (`myoung34/github-runner`, labels `self-hosted,watchtower,x64,zen5`, hostPath CI cache, CPU/mem limits per plan).
 3. Point sapphire mutation: `runs-on: [self-hosted, watchtower]`; spike Postgres **service containers** early (circuit-break to host Postgres sidecar if DinD fails).
-4. Smoke `workflow_dispatch` on Watchtower; re-enable schedule **only** on self-hosted.
+4. Smoke `workflow_dispatch` on Watchtower (critical-only default); do **not** re-enable weekly full cron — full is opt-in only.
 5. Verify GitHub spending limit $0 (plan Phase 1).
 
 ## Visuals (shaping)
@@ -93,7 +93,7 @@ Manual UI QA: not applicable (no user-visible UI). Ops breadboard is the mermaid
 - [ ] Docs-only PR completes without Playwright install / full E2E wall
 - [ ] App PR CI uses cached Playwright; healthy run clearly under prior ~4 min cold-install tax
 - [ ] Watchtower runner online; mutation `workflow_dispatch` green on `[self-hosted, watchtower]`
-- [ ] Scheduled/path mutation re-enabled on self-hosted only; `AGENTS.md` + nightly workflow match
+- [x] Path-filtered diff mutation on self-hosted; weekly full cron **dropped**; dispatch `full_allowlist` opt-in; `AGENTS.md` + workflow match
 - [ ] Executable QA: `uv run python scripts/qa_ci_reliability.py` prints `[PASS]` / `[FAIL]` for happy and negative policy cases
 - [ ] Manual UI QA: not applicable (no user-visible UI)
 - [ ] Core invariants held where touched (financial modules still killable; no PII/amount logging)
@@ -103,3 +103,5 @@ Manual UI QA: not applicable (no user-visible UI). Ops breadboard is the mermaid
 ## Circuit breaker
 
 At appetite end: ship Track 1 + whatever of Tracks 2–3 is green, **or** drop. If runner Postgres services fail, ship Track 1 + dispatch-only mutation on self-hosted with documented host DB. Unfinished ARC and “all CI on Watchtower” return to [`raw_backlog.md`](raw_backlog.md). Do not silently extend; do not absorb History charts scope.
+
+**Mutation shrink (post-Track-2):** Multi-hour full-allowlist runs on Watchtower were the remaining cost/latency risk. Default gate is now path-filtered **diff** (push) + **critical-only** (dispatch); weekly cron removed; full audit only via `workflow_dispatch` → `full_allowlist=true`. Holdings survivors (if any under full allowlist) are tracked separately and must not block this shrink — critical/diff modes do not require green full-allowlist.

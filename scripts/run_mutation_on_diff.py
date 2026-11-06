@@ -3,10 +3,13 @@
 
 Modes
 -----
-* **Diff-scoped (default):** mutate allowlisted files changed vs ``origin/main``.
+* **Diff-scoped (default):** mutate allowlisted files changed vs a base ref.
+  Base is ``MUTATION_DIFF_BASE`` (CI push before-SHA) or ``origin/main``.
   When none changed, write ``skipped: true`` and exit 0.
+* **Critical-only (``--critical-only``):** mutate only ``CRITICAL_MODULES``
+  (validator). Fast dispatch / fallback path.
 * **Full allowlist (``--full-allowlist``):** mutate every allowlisted module.
-  Used by the nightly / main-required mutation workflow.
+  Rare manual audit via ``workflow_dispatch`` with ``full_allowlist=true``.
 
 Scope policy
 ------------
@@ -15,13 +18,15 @@ orchestrator, and telemetry glue are intentionally out of mutation scope;
 those areas are gated by coverage and targeted unit/E2E tests instead.
 
 Critical modules (e.g. ``app/pipeline/validator.py``) are always included
-whenever a mutation run executes, even if they are not in the git diff.
+whenever a diff-scoped mutation run executes, even if they are not in the
+git diff.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -44,17 +49,30 @@ STATS_PATH = Path("mutants/mutmut-cicd-stats.json")
 PYPROJECT = Path("pyproject.toml")
 E2E_TEST = Path("tests/test_e2e_dashboard.py")
 E2E_HIDDEN = Path("tests/test_e2e_dashboard.py.bak")
+_ZERO_SHA = "0" * 40
 
 
-def get_changed_app_files() -> list[str]:
+def get_changed_app_files(*, base: str | None = None) -> list[str]:
+    """Return app/*.py paths changed between *base* and HEAD.
+
+    *base* defaults to ``MUTATION_DIFF_BASE`` env, else ``origin/main``.
+    On CI push to main, the workflow sets ``MUTATION_DIFF_BASE`` to
+    ``github.event.before`` so the diff is non-empty after fetch.
+    """
+    resolved = (base or os.environ.get("MUTATION_DIFF_BASE") or "").strip()
+    if not resolved or resolved == _ZERO_SHA:
+        resolved = "origin/main"
+        try:
+            subprocess.run(
+                ["git", "fetch", "origin", "main"],
+                check=True,
+                capture_output=True,
+            )
+        except subprocess.CalledProcessError:
+            return []
     try:
-        subprocess.run(
-            ["git", "fetch", "origin", "main"],
-            check=True,
-            capture_output=True,
-        )
         res = subprocess.run(
-            ["git", "diff", "--name-only", "origin/main...HEAD"],
+            ["git", "diff", "--name-only", f"{resolved}...HEAD"],
             capture_output=True,
             text=True,
             check=True,
@@ -94,6 +112,11 @@ def list_allowlisted_modules() -> list[str]:
         if Path(critical).is_file():
             targets.add(critical)
     return sorted(targets)
+
+
+def list_critical_modules() -> list[str]:
+    """Return existing CRITICAL_MODULES paths only."""
+    return [m for m in CRITICAL_MODULES if Path(m).is_file()]
 
 
 def select_mutation_targets(changed_files: list[str]) -> list[str]:
@@ -192,12 +215,29 @@ def run_mutation(targets: list[str]) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--full-allowlist",
         action="store_true",
         help=(
-            "Mutate every allowlisted financial module (nightly / main gate). "
-            "Default is diff-scoped versus origin/main."
+            "Mutate every allowlisted financial module (rare full audit). "
+            "Default is diff-scoped versus MUTATION_DIFF_BASE / origin/main."
+        ),
+    )
+    mode.add_argument(
+        "--critical-only",
+        action="store_true",
+        help=(
+            "Mutate only CRITICAL_MODULES (validator). Used for fast "
+            "workflow_dispatch smoke and push fallbacks without a before SHA."
+        ),
+    )
+    parser.add_argument(
+        "--base",
+        default=None,
+        help=(
+            "Diff base ref/SHA for default mode (overrides MUTATION_DIFF_BASE / "
+            "origin/main)."
         ),
     )
     args = parser.parse_args(argv)
@@ -209,7 +249,14 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         return run_mutation(targets)
 
-    changed = get_changed_app_files()
+    if args.critical_only:
+        targets = list_critical_modules()
+        if not targets:
+            write_skipped_stats(reason="Critical-only requested but no modules found.")
+            return 1
+        return run_mutation(targets)
+
+    changed = get_changed_app_files(base=args.base)
     targets = select_mutation_targets(changed)
 
     out_of_scope = sorted(f for f in changed if not is_allowlisted(f))
@@ -219,7 +266,7 @@ def main(argv: list[str] | None = None) -> int:
     if not targets:
         write_skipped_stats(
             reason=(
-                "No allowlisted financial modules changed versus origin/main "
+                "No allowlisted financial modules changed versus diff base "
                 "(presentation/API/MCP/orchestrator diffs are out of mutation scope)."
             )
         )

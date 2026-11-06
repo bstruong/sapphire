@@ -30,7 +30,7 @@ Two different “local model” questions — keep them separate:
 - **Financial Precision (`BIGINT`):** All money is integer cents. No floats for currency.
 - **Fail-loud contracts:** Schema drift, missing markers, and recon breaks raise explicit exceptions.
 - **TDD & coverage:** `uv run pytest --cov=app --cov-fail-under=90 -v` (≥90%).
-- **Mutation (nightly on main):** Financial allowlist via `.github/workflows/mutation-nightly.yml`—not a PR blocker.
+- **Mutation (Watchtower on main):** Path-filtered diff / critical-only via `.github/workflows/mutation-nightly.yml`—not a PR blocker; full allowlist is rare/opt-in.
 
 Planning uses Shape Up (`ARCH_PLAN.md`, `docs/specs/`). User-visible pitches must include shaping-phase wireframes under `docs/specs/visuals/`.
 
@@ -62,6 +62,6 @@ Open `http://127.0.0.1:8000/dashboard`. Baseline wireframe: `docs/specs/visuals/
 
 ### CI & Mutation Testing (`mutmut`)
 * **PR CI (required):** lint, format, coverage ≥90%. **Mutation is not a PR blocker.**
-* **Nightly / main:** `.github/workflows/mutation-nightly.yml` runs full allowlist mutation.
+* **Main (Watchtower):** `.github/workflows/mutation-nightly.yml` runs path-filtered diff on push; `workflow_dispatch` defaults to critical-only; set `full_allowlist=true` for a rare full audit.
 * **Classic score:** `killed / (killed + survived)`. `no_tests` is a separate hard fail.
 * See `AGENTS.md` for full mutation and process rules.
