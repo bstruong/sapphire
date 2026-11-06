@@ -123,8 +123,11 @@ def test_ci_cd_workflow(root_dir: Path) -> None:
     )
     nightly = nightly_yaml.read_text(encoding="utf-8")
     assert_condition(
-        "Nightly mutation runs full allowlist + score gate",
-        "--full-allowlist" in nightly and "check_mutation_score.py" in nightly,
+        "Nightly mutation keeps score gate + opt-in full allowlist",
+        "--full-allowlist" in nightly
+        and "--critical-only" in nightly
+        and "check_mutation_score.py" in nightly
+        and "schedule:" not in nightly,
     )
     assert_condition(
         "Nightly mutation runs on Watchtower self-hosted",

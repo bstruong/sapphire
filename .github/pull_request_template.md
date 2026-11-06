@@ -19,8 +19,8 @@
 - [ ] **Formatter:** `uv run ruff format --check .` passes cleanly.
 - [ ] **Coverage Gate:** `uv run pytest --cov=app --cov-fail-under=90 -v` passes.
 - **Reported Coverage:** `[Insert % here, e.g. 98%]`
-- [ ] **Mutation Testing (nightly on main, not a PR blocker):** financial changes remain in allowlist scope; nightly full-allowlist gate on `main` uses classic score `killed/(killed+survived)` >= 55%, `no_tests == 0`, validator 100% when run.
-- **Reported Mutation Score:** `[Optional — from local --full-allowlist or latest Mutation Nightly run]`
+- [ ] **Mutation Testing (Watchtower on main, not a PR blocker):** financial changes remain in allowlist scope; diff/critical gates on `main` use classic score `killed/(killed+survived)` >= 55%, `no_tests == 0`, validator 100% when run. Full-allowlist is opt-in/rare.
+- **Reported Mutation Score:** `[Optional — from local --critical-only / --full-allowlist or latest Mutation Nightly run]`
 
 ## Architecture & Agent Review Invariants
 Please ensure all applicable boxes are checked before requesting review:

@@ -4,7 +4,7 @@
 Target Audience: Product Manager & Quality Assurance
 Purpose:
     Demonstrates that the mutation strategy kills defects in financial modules.
-    Mutation is required on main via nightly (not a PR merge blocker).
+    Mutation gates main via Watchtower diff/critical (not a PR merge blocker).
 
 Usage:
     uv run python scripts/qa_mutation_testing.py

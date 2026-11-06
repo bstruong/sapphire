@@ -48,16 +48,21 @@ def test_mutation_runs_on_self_hosted_watchtower(mutation_text: str) -> None:
     assert "runs-on: ubuntu-latest" not in mutation_text
 
 
-def test_mutation_triggers_weekly_path_push_dispatch(mutation_text: str) -> None:
-    assert 'cron: "0 8 * * 0"' in mutation_text
+def test_mutation_triggers_path_push_dispatch_no_cron(mutation_text: str) -> None:
+    assert "schedule:" not in mutation_text
+    assert "cron:" not in mutation_text
     assert "workflow_dispatch:" in mutation_text
+    assert "full_allowlist:" in mutation_text
+    assert "default: false" in mutation_text
     assert "app/pipeline/**" in mutation_text
     assert "# Temporarily disabled automatic runs" not in mutation_text
 
 
-def test_mutation_push_diff_vs_full_allowlist(mutation_text: str) -> None:
+def test_mutation_push_diff_vs_opt_in_full_allowlist(mutation_text: str) -> None:
     assert "--full-allowlist" in mutation_text
-    assert 'github.event_name }}" = "push"' in mutation_text
+    assert "--critical-only" in mutation_text
+    assert "MUTATION_DIFF_BASE" in mutation_text
+    assert 'inputs.full_allowlist }}" = "true"' in mutation_text
     assert "check_mutation_score.py" in mutation_text
     assert "--min-score 55.0" in mutation_text
     assert "--max-no-tests 0" in mutation_text

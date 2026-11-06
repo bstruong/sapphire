@@ -87,6 +87,11 @@ class TestAllowlistSelection:
         assert not any(t.startswith("app/api/") for t in targets)
         assert not any(t.startswith("app/mcp/") for t in targets)
 
+    def test_critical_only_is_validator_surface(self, runner) -> None:
+        targets = runner.list_critical_modules()
+        assert targets == ["app/pipeline/validator.py"]
+        assert runner.CRITICAL_MODULES == ("app/pipeline/validator.py",)
+
 
 class TestClassicScore:
     def test_score_excludes_no_tests_from_denominator(self, checker) -> None:
