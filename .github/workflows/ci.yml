@@ -47,6 +47,20 @@ jobs:
     steps:
     - name: Check out repository
       uses: actions/checkout@v4
+    # Docs/specs / markdown-only PRs skip Playwright + E2E; app-touching paths keep full suite.
+    - name: Detect app-touching paths
+      uses: dorny/paths-filter@v3
+      id: filter
+      with:
+        filters: |
+          needs_e2e:
+            - 'app/**'
+            - 'tests/**'
+            - 'scripts/**'
+            - 'pyproject.toml'
+            - 'uv.lock'
+            - '.github/workflows/**'
+            - '**/*.py'
     - name: Set up uv
       uses: astral-sh/setup-uv@v5
       with:
@@ -62,13 +76,40 @@ jobs:
         TEST_DATABASE_URL: postgresql://postgres:sapphire@localhost:54329/sapphire_test
         DATABASE_URL: postgresql://postgres:sapphire@localhost:54329/sapphire_test
       run: uv run python -c "from app.db.connection import init_db; init_db()"
-    - name: Install Playwright browsers
+    - name: Resolve Playwright version
+      if: steps.filter.outputs.needs_e2e == 'true'
+      id: playwright
+      run: |
+        PW_VER=$(uv run python -c 'import importlib.metadata as m; print(m.version("playwright"))')
+        echo "version=${PW_VER}" >> "$GITHUB_OUTPUT"
+        echo "Playwright version: ${PW_VER}"
+    - name: Cache Playwright browsers
+      if: steps.filter.outputs.needs_e2e == 'true'
+      id: playwright-cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
+        restore-keys: |
+          playwright-${{ runner.os }}-${{ runner.arch }}-
+    - name: Install Playwright browsers (cache miss)
+      if: steps.filter.outputs.needs_e2e == 'true' && steps.playwright-cache.outputs.cache-hit != 'true'
       run: uv run playwright install --with-deps
-    - name: Run test suite with strict coverage gate (>90%)
+    - name: Install Playwright OS deps (cache hit)
+      if: steps.filter.outputs.needs_e2e == 'true' && steps.playwright-cache.outputs.cache-hit == 'true'
+      run: uv run playwright install-deps
+    - name: Run test suite with E2E and coverage gate (>90%)
+      if: steps.filter.outputs.needs_e2e == 'true'
       env:
         TEST_DATABASE_URL: postgresql://postgres:sapphire@localhost:54329/sapphire_test
         # Pytest session fixture also forces DATABASE_URL → sapphire_test.
         DATABASE_URL: postgresql://postgres:sapphire@localhost:54329/sapphire_test
       run: uv run pytest --cov=app --cov-fail-under=90 -v
+    - name: Run test suite without E2E (docs/markdown-only) with coverage gate (>90%)
+      if: steps.filter.outputs.needs_e2e != 'true'
+      env:
+        TEST_DATABASE_URL: postgresql://postgres:sapphire@localhost:54329/sapphire_test
+        DATABASE_URL: postgresql://postgres:sapphire@localhost:54329/sapphire_test
+      run: uv run pytest --cov=app --cov-fail-under=90 -v --ignore=tests/test_e2e_dashboard.py
   # Mutation testing moved to .github/workflows/mutation-nightly.yml
   # (schedule + main path pushes + workflow_dispatch). PRs are not blocked by mutmut.

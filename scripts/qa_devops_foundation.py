@@ -90,6 +90,29 @@ def test_ci_cd_workflow(root_dir: Path) -> None:
         "--cov-fail-under=90" in content,
     )
     assert_condition(
+        "CI caches Playwright browsers keyed on OS/arch + version",
+        "actions/cache@v4" in content
+        and "~/.cache/ms-playwright" in content
+        and "playwright-${{ runner.os }}" in content,
+    )
+    assert_condition(
+        "CI installs Playwright --with-deps only on cache miss",
+        "cache-hit != 'true'" in content
+        and "playwright install --with-deps" in content
+        and "playwright install-deps" in content,
+    )
+    assert_condition(
+        "CI path-filters docs/markdown-only away from Playwright + E2E",
+        "dorny/paths-filter@v3" in content
+        and "needs_e2e" in content
+        and "--ignore=tests/test_e2e_dashboard.py" in content,
+        "Docs/specs / markdown-only PRs skip browser install; app paths keep E2E.",
+    )
+    assert_condition(
+        "PR CI stays on ubuntu-latest (not self-hosted)",
+        "runs-on: ubuntu-latest" in content and "self-hosted" not in content,
+    )
+    assert_condition(
         "PR CI does not block on mutation (moved to nightly)",
         "check_mutation_score.py" not in content and "mutation:" not in content,
     )
