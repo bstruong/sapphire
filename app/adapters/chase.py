@@ -51,6 +51,14 @@ class ChaseDepositoryAdapter(StandardDepositoryAdapter):
                 )
                 if not chase_brand:
                     return False
+                # Credit-card packets belong to ChaseCreditCardAdapter exclusively.
+                if (
+                    "CREDIT CARD" in first_text
+                    or "CARDMEMBER" in first_text
+                    or "CARD MEMBER" in first_text
+                    or "CARD STATEMENT" in first_text
+                ):
+                    return False
                 if "COMBINED" in first_text or (
                     "CHECKING SUMMARY" in first_text and "SAVINGS SUMMARY" in first_text
                 ):

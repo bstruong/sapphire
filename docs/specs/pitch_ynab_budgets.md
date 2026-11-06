@@ -1,12 +1,13 @@
 # Pitch: YNAB budgets / envelopes
 
-**Status:** In-bet  
+**Status:** Shipped  
 **Builder:** Cloud agent (Cloud-Build Mode)  
 **Bettor:** Human PM  
 **Appetite:** Small Batch (2 weeks)  
 **Product north star:** YNAB-useful personal Vault — give assigned dollars a job  
 **Depends on:** Account overview home — shipped ([#50](https://github.com/bstruong/sapphire/pull/50))  
-**Board:** Private GitHub Project **SAPPHIRE Shape Up** (Lane=In-bet)
+**Board:** Private GitHub Project **SAPPHIRE Shape Up** (Lane=Shipped)  
+**Shipped:** [#54](https://github.com/bstruong/sapphire/pull/54)
 
 ---
 
@@ -68,12 +69,12 @@ flowchart LR
 
 ## Done-when
 
-- [ ] `uv run python scripts/qa_ynab_budgets.py` — happy assign; negative over-assign / invalid amount fail loud; amounts integer cents in storage
-- [ ] Manual UI QA documented below (matches wireframe)
-- [ ] Wireframe linked
-- [ ] Project board item Lane updated to In-bet on bet / Shipped on merge
-- [ ] Core invariants: integer cents, fail-loud, no PII/amount logging
-- [ ] CI gates green
+- [x] `uv run python scripts/qa_ynab_budgets.py` — happy assign; negative over-assign / invalid amount fail loud; amounts integer cents in storage
+- [x] Manual UI QA documented below (matches wireframe)
+- [x] Wireframe linked
+- [x] Project board item Lane updated to In-bet on bet / Shipped on merge
+- [x] Core invariants: integer cents, fail-loud, no PII/amount logging
+- [x] CI gates green
 
 ## Manual UI QA (for build cycle)
 

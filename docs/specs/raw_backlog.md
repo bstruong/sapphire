@@ -9,6 +9,9 @@ To schedule work: shape a pitch from [`PITCH_TEMPLATE.md`](PITCH_TEMPLATE.md), a
 ---
 
 - Additional depository / card institution adapters beyond the first locked institution
+- Charles Schwab **checking/savings** depository adapter (brokerage already shipped; household checking is Schwab + SFFCU)
+- San Francisco Federal Credit Union checking adapter
+- Chase credit card production layout variants beyond the synthetic SAPPHIRE card contract
 - Synthetic PDF fixtures (beyond JSON token fixtures) for layout-hard statements
 - Full Grafana Tempo / Prometheus / Loki dashboards beyond collector smoke (depends on Watchtower telemetry pitch)
 - Traefik ingress hardening notes for Vault deployment

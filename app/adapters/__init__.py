@@ -7,6 +7,8 @@ from app.adapters.base import (
     InvestmentStatementAdapter,
     StatementAdapter,
 )
+from app.adapters.chase import ChaseDepositoryAdapter
+from app.adapters.chase_credit_card import ChaseCreditCardAdapter
 from app.adapters.combined import StandardCombinedDepositoryAdapter
 from app.adapters.credit_card import StandardCreditCardAdapter
 from app.adapters.depository import StandardDepositoryAdapter
@@ -21,6 +23,8 @@ from app.adapters.vanguard import VanguardAdapter
 
 __all__ = [
     "AdapterRegistry",
+    "ChaseCreditCardAdapter",
+    "ChaseDepositoryAdapter",
     "CombinedStatementAdapter",
     "CreditCardStatementAdapter",
     "DepositoryStatementAdapter",

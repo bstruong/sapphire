@@ -1,0 +1,57 @@
+<section class="view" id="audit-pane" data-nav="audit">
+    <header class="page-head">
+        <h1>Audit</h1>
+        <p>Verify the Vault without exposing it</p>
+    </header>
+
+    <div class="grid-2">
+        <div class="card">
+            <div class="card-head">
+                <div>
+                    <h2>Vault ledger</h2>
+                    <p>Query the Vault ledger for the latest statements.</p>
+                </div>
+            </div>
+            <form class="card-body stack"
+                  hx-post="/api/v1/dashboard/analyze"
+                  hx-swap="innerHTML"
+                  hx-target="#pane-vault-body"
+                  hx-indicator="#pane-vault-body">
+                <div class="field">
+                    <label for="question">Refresh latest ledger</label>
+                    <input type="text" id="question" name="question" class="input"
+                           value="Show latest Vault ledger" required>
+                </div>
+                <button type="submit" id="submit-btn" class="btn btn-ghost btn-block"><svg class="icon"><use href="#i-refresh"/></svg>Show latest ledger</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <div class="card-head">
+                <div>
+                    <h2>Frontier verification</h2>
+                    <p>Independent check of aggregate totals.</p>
+                </div>
+            </div>
+            <div class="card-body stack">
+                <div class="boundary">
+                    <svg class="icon"><use href="#i-shield"/></svg>
+                    <div>Only grouped totals are sent. No row text, account numbers, or individual transactions leave the Vault.</div>
+                </div>
+                <form id="frontier-audit-form" class="stack"
+                      hx-post="/api/v1/dashboard/frontier-audit"
+                      hx-swap="innerHTML"
+                      hx-target="#frontier-result">
+                    <div class="field">
+                        <label for="frontier-group-by">Aggregate group</label>
+                        <input type="text" id="frontier-group-by" name="group_by" class="input"
+                               value="transaction_category" required>
+                    </div>
+                    <button type="submit" id="frontier-verify-btn" class="btn btn-primary btn-block">Verify &amp; Analyze with Frontier Model</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div id="frontier-result"></div>
+</section>

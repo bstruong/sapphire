@@ -1,37 +1,83 @@
-<div class="analysis-result budget-pane" id="budget-pane">
-    <h3>Budget</h3>
-    <p><strong>Status:</strong> <span class="status-badge status-ok">from Vault</span></p>
-    <p style="margin-top:12px;color:#8b949e;font-size:0.85rem;">
-        Ready to Assign = Vault closings minus envelope assignments (integer cents stored, USD shown).
-    </p>
-    <div style="margin-top:16px;">
-        <span style="color:#8b949e;text-transform:uppercase;font-size:0.7rem;">Ready to Assign</span>
-        <div class="amount" style="font-size:1.25rem;margin-top:4px;">
-            {{ ready_to_assign_cents | usd_cents }}
+<section class="view budget-pane" id="budget-pane" data-nav="budget">
+    <header class="page-head">
+        <h1>Budget</h1>
+        <p>Give every dollar a job</p>
+    </header>
+
+    {% if error_code %}
+    <div class="alert" role="alert">
+        <svg class="icon"><use href="#i-alert"/></svg>
+        <div>
+            <h4>Request rejected</h4>
+            <p>Error <code>{{ error_code }}</code> &mdash; {{ error_detail }}</p>
+            <p class="muted">Nothing was saved.</p>
         </div>
     </div>
-    <div class="table-scroll" style="margin-top:16px;">
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>Envelope</th>
-                    <th class="amount">Assigned</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% if envelopes %}
-                {% for row in envelopes %}
-                <tr>
-                    <td>{{ row.name }}</td>
-                    <td class="amount">{{ row.balance_cents | usd_cents }}</td>
-                </tr>
-                {% endfor %}
-                {% else %}
-                <tr>
-                    <td colspan="2" style="color:#8b949e;">No envelopes yet — create one to assign dollars.</td>
-                </tr>
-                {% endif %}
-            </tbody>
-        </table>
+    {% endif %}
+
+    <div class="card rta">
+        <div>
+            <div class="eyebrow">Ready to Assign</div>
+            <div class="value num" id="ready-to-assign">{{ ready_to_assign_cents | usd_cents }}</div>
+            <p class="sub">Vault closings minus envelope assignments (integer cents stored, USD shown).</p>
+        </div>
+        <form id="budget-assign-form" class="rta-form"
+              hx-post="/api/v1/dashboard/budget/assign"
+              hx-swap="innerHTML"
+              hx-target="#pane-vault-body">
+            <div class="field">
+                <label for="assign-envelope">Envelope</label>
+                <select id="assign-envelope" name="envelope_id" class="select" required>
+                    {% if envelopes %}
+                    {% for env in envelopes %}
+                    <option value="{{ env.envelope_id }}">{{ env.name }}</option>
+                    {% endfor %}
+                    {% else %}
+                    <option value="" disabled selected>Create an envelope first</option>
+                    {% endif %}
+                </select>
+            </div>
+            <div class="field">
+                <label for="assign-amount">Amount (USD)</label>
+                <div class="input-prefix">
+                    <span>$</span>
+                    <input type="text" id="assign-amount" name="amount_usd" class="input num"
+                           placeholder="50.00" inputmode="decimal" required>
+                </div>
+            </div>
+            <button type="submit" id="assign-btn" class="btn btn-primary"{% if not envelopes %} disabled{% endif %}>Assign</button>
+        </form>
     </div>
-</div>
+
+    <div class="card">
+        <div class="card-head">
+            <div>
+                <h2>Envelopes</h2>
+                <p>Every dollar gets a job.</p>
+            </div>
+            {% if envelopes %}
+            <span class="chip chip-neutral num">{{ envelopes | sum(attribute='balance_cents') | usd_cents }} assigned</span>
+            {% endif %}
+        </div>
+        <div class="card-flush">
+            {% if envelopes %}
+            {% for row in envelopes %}
+            <div class="env-row">
+                <span class="strong">{{ row.name }}</span>
+                <span class="strong num">{{ row.balance_cents | usd_cents }}</span>
+            </div>
+            {% endfor %}
+            {% else %}
+            <div class="empty-inline">No envelopes yet &mdash; create one to assign dollars.</div>
+            {% endif %}
+            <form id="envelope-create-form" class="new-env"
+                  hx-post="/api/v1/dashboard/budget/envelopes"
+                  hx-swap="innerHTML"
+                  hx-target="#pane-vault-body">
+                <input type="text" id="envelope-name" name="name" class="input"
+                       placeholder="New envelope name, e.g. Groceries" aria-label="Envelope name" required>
+                <button type="submit" class="btn btn-ghost btn-sm"><svg class="icon"><use href="#i-plus"/></svg>Create</button>
+            </form>
+        </div>
+    </div>
+</section>

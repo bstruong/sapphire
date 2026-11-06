@@ -1,7 +1,17 @@
-<div class="analysis-result ledger-result">
-    <h3>Vault Ledger</h3>
-    <p><strong>Status:</strong> <span class="status-badge status-warn">empty</span></p>
-    <p style="margin-top:12px;color:#8b949e;font-size:0.85rem;">
-        No persisted statements yet. Upload a Chase or Schwab PDF to the Vault.
-    </p>
-</div>
+<section class="view ledger-result" data-nav="statements">
+    <header class="page-head">
+        <h1>Vault Ledger</h1>
+        <p>Templated ledger from Postgres</p>
+    </header>
+    <div class="card">
+        <div class="empty">
+            <div class="empty-art"><svg class="icon"><use href="#i-doc"/></svg></div>
+            <h2>No persisted statements yet</h2>
+            <p>Upload a supported statement PDF to the Vault and its ledger appears here.</p>
+            <button type="button" class="btn btn-primary"
+                    hx-get="/api/v1/dashboard/statements"
+                    hx-target="#pane-vault-body"
+                    hx-swap="innerHTML"><svg class="icon"><use href="#i-upload"/></svg>Upload a statement</button>
+        </div>
+    </div>
+</section>

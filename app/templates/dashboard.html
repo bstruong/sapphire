@@ -1,246 +1,194 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SAPPHIRE - Financial Intelligence Dashboard</title>
+    <script>
+        // Apply theme before first paint: stored preference, else prefers-color-scheme.
+        (function () {
+            var stored = null;
+            try {
+                stored = window.localStorage.getItem("sapphire-theme");
+            } catch (err) {
+                stored = null;
+            }
+            var theme;
+            if (stored === "dark" || stored === "light") {
+                theme = stored;
+            } else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+                theme = "dark";
+            } else {
+                theme = "light";
+            }
+            document.documentElement.setAttribute("data-theme", theme);
+        })();
+    </script>
+    <link rel="stylesheet" href="/static/sapphire.css">
     <script src="/static/htmx.min.js"></script>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0d1117; color: #c9d1d9; }
-        .header { background: #161b22; padding: 16px 24px; border-bottom: 1px solid #30363d; display: flex; align-items: center; gap: 12px; }
-        .header h1 { font-size: 1.25rem; color: #58a6ff; }
-        .header .badge { background: #238636; color: #fff; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; }
-        .container { display: flex; height: calc(100vh - 57px); }
-        .pane { flex: 1; display: flex; flex-direction: column; border-right: 1px solid #30363d; }
-        .pane:last-child { border-right: none; }
-        .pane-header { background: #161b22; padding: 12px 16px; border-bottom: 1px solid #30363d; font-weight: 600; font-size: 0.9rem; }
-        .pane-header .icon { margin-right: 8px; }
-        .pane-body { flex: 1; padding: 16px; overflow-y: auto; }
-        .form-group { margin-bottom: 16px; }
-        .form-group label { display: block; margin-bottom: 6px; font-size: 0.85rem; color: #8b949e; }
-        input[type="file"] { width: 100%; color: #c9d1d9; font-size: 0.85rem; }
-        textarea { width: 100%; min-height: 80px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 12px; color: #c9d1d9; font-family: inherit; font-size: 0.9rem; resize: vertical; }
-        textarea:focus { outline: none; border-color: #58a6ff; }
-        button { background: #238636; color: #fff; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 0.9rem; font-weight: 500; }
-        button:hover { background: #2ea043; }
-        button:disabled { background: #30363d; cursor: not-allowed; }
-        button.secondary { background: #21262d; border: 1px solid #30363d; }
-        button.secondary:hover { background: #30363d; }
-        .analysis-result { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 16px; margin-top: 12px; }
-        .analysis-result h3 { color: #58a6ff; margin-bottom: 8px; font-size: 1rem; }
-        .analysis-result p { color: #8b949e; font-size: 0.85rem; margin-bottom: 8px; }
-        .data-table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 0.85rem; }
-        .data-table th { background: #161b22; color: #58a6ff; padding: 8px 12px; text-align: left; border-bottom: 1px solid #30363d; }
-        .data-table td { padding: 8px 12px; border-bottom: 1px solid #21262d; color: #c9d1d9; }
-        .data-table tr:hover td { background: #161b22; }
-        .table-scroll { overflow-x: auto; width: 100%; }
-        .period { white-space: nowrap; min-width: 14rem; }
-        .amount { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-        .status-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 500; }
-        .status-ok { background: #238636; color: #fff; }
-        .status-warn { background: #9e6a03; color: #fff; }
-        .status-err { background: #da3633; color: #fff; }
-        .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #484f58; }
-        .empty-state .icon { font-size: 3rem; margin-bottom: 12px; }
-        .empty-state p { font-size: 0.9rem; }
-        .loading { color: #58a6ff; font-style: italic; }
-        input[type="text"] { width: 100%; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 8px 12px; color: #c9d1d9; }
-        .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
-        .card-title { font-size: 0.95rem; font-weight: 600; color: #58a6ff; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
-        .card-subtitle { font-size: 0.8rem; color: #8b949e; margin-bottom: 14px; }
-        .action-tab-btn { border: 1px solid #30363d; font-weight: 600; transition: all 0.15s ease; }
-        .action-tab-btn.active { background: #238636; border-color: #2ea043; color: #fff; }
-        .action-tab-btn.secondary { background: #21262d; border-color: #30363d; color: #8b949e; }
-        .action-tab-btn.secondary:hover { color: #c9d1d9; border-color: #58a6ff; }
-    </style>
 </head>
 <body>
-    <div class="header">
-        <h1>SAPPHIRE</h1>
-        <span>Financial Intelligence Dashboard</span>
-        <span class="badge">Vault</span>
-    </div>
-    <div class="container">
-        <div class="pane" id="pane-analyst">
-            <div class="pane-header">
-                <span class="icon">&#9889;</span>Upload &amp; actions
-                <span style="float:right;font-weight:400;font-size:0.75rem;color:#8b949e">Chase · Schwab</span>
+    <!-- Inline SVG sprite: icons used by the shell and every HTMX fragment. -->
+    <svg width="0" height="0" class="sprite" aria-hidden="true" focusable="false">
+        <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h14V9.5"/></symbol>
+        <symbol id="i-wallet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="14" rx="3"/><path d="M3 10h18"/><circle cx="16.5" cy="15" r="1.2" fill="currentColor"/></symbol>
+        <symbol id="i-doc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></symbol>
+        <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4.5 6v6c0 4.5 3.2 7.8 7.5 9 4.3-1.2 7.5-4.5 7.5-9V6z"/><path d="m9 12 2 2 4-4"/></symbol>
+        <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></symbol>
+        <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+        <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></symbol>
+        <symbol id="i-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 6-6 6 6 6"/></symbol>
+        <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></symbol>
+        <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5"/><circle cx="12" cy="16" r=".8" fill="currentColor"/></symbol>
+        <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v4h-4"/></symbol>
+        <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+        <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></symbol>
+    </svg>
+
+    <div class="app">
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-mark" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 3h12l4 6-10 12L2 9z"/><path d="M2 9h20M9 3l3 18 3-18"/></svg>
+                </div>
+                <div class="brand-name">SAPPHIRE</div>
             </div>
-            <div class="pane-body">
-                <!-- Streamlined Mode Navigation -->
-                <div style="display:flex; gap:8px; margin-bottom:16px;">
-                    <button type="button" id="tab-btn-budget" class="action-tab-btn secondary"
-                            onclick="switchActionTab('budget')"
-                            hx-get="/api/v1/dashboard/budget"
-                            hx-target="#pane-vault-body"
-                            hx-swap="innerHTML"
-                            style="flex:1; padding:8px 12px; font-size:0.85rem; border-radius:6px; cursor:pointer;">
-                        ✉️ Budget
+
+            <nav class="nav" aria-label="Primary">
+                <div class="nav-label">Money</div>
+                <button type="button" id="nav-overview" aria-current="page"
+                        hx-get="/api/v1/dashboard/overview"
+                        hx-target="#pane-vault-body"
+                        hx-swap="innerHTML"
+                        hx-indicator="#pane-vault-body"><svg class="icon"><use href="#i-home"/></svg>Overview</button>
+                <button type="button" id="nav-budget"
+                        hx-get="/api/v1/dashboard/budget"
+                        hx-target="#pane-vault-body"
+                        hx-swap="innerHTML"
+                        hx-indicator="#pane-vault-body"><svg class="icon"><use href="#i-wallet"/></svg>Budget</button>
+                <button type="button" id="nav-statements"
+                        hx-get="/api/v1/dashboard/statements"
+                        hx-target="#pane-vault-body"
+                        hx-swap="innerHTML"
+                        hx-indicator="#pane-vault-body"><svg class="icon"><use href="#i-doc"/></svg>Statements</button>
+                <div class="nav-label spaced">Verify</div>
+                <button type="button" id="nav-audit"
+                        hx-get="/api/v1/dashboard/audit"
+                        hx-target="#pane-vault-body"
+                        hx-swap="innerHTML"
+                        hx-indicator="#pane-vault-body"><svg class="icon"><use href="#i-shield"/></svg>Audit</button>
+            </nav>
+
+            <div class="vault-card">
+                <div class="row"><span class="dot"></span>Local Vault online</div>
+                <ul>
+                    <li><span>Parsing</span><span>On-device</span></li>
+                    <li><span>PII to cloud</span><span>Never</span></li>
+                    <li><span>Precision</span><span>Integer cents</span></li>
+                </ul>
+            </div>
+        </aside>
+
+        <main class="main">
+            <header class="topbar">
+                <div class="topbar-title" id="topbar-title">Overview</div>
+                <div class="topbar-actions">
+                    <button type="button" id="theme-toggle" class="theme-toggle"
+                            aria-label="Switch to dark theme" title="Switch to dark theme">
+                        <svg class="icon icon-moon"><use href="#i-moon"/></svg>
+                        <svg class="icon icon-sun"><use href="#i-sun"/></svg>
                     </button>
-                    <button type="button" id="tab-btn-upload" class="action-tab-btn active"
-                            onclick="switchActionTab('upload')"
-                            hx-get="/api/v1/dashboard/overview"
+                    <button type="button" id="topbar-upload" class="btn btn-primary"
+                            hx-get="/api/v1/dashboard/statements"
                             hx-target="#pane-vault-body"
                             hx-swap="innerHTML"
-                            style="flex:1; padding:8px 12px; font-size:0.85rem; border-radius:6px; cursor:pointer;">
-                        📄 Upload &amp; Audit
-                    </button>
+                            hx-indicator="#pane-vault-body"><svg class="icon"><use href="#i-upload"/></svg>Upload statement</button>
                 </div>
-
-                <!-- Budget View: Clean, Focused Envelope Actions -->
-                <div id="action-content-budget" style="display:none;">
-                    <div class="card">
-                        <div class="card-title">
-                            <span>✉️</span> Assign to Envelope
-                        </div>
-                        <p class="card-subtitle">Give unassigned dollars a job</p>
-                        <form id="budget-assign-form"
-                              hx-post="/api/v1/dashboard/budget/assign"
-                              hx-swap="innerHTML"
-                              hx-target="#pane-vault-body">
-                            <div class="form-group">
-                                <label for="assign-envelope">Envelope</label>
-                                <select id="assign-envelope" name="envelope_id" required
-                                        style="width:100%;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px 12px;color:#c9d1d9;">
-                                    {% if assign_envelopes %}
-                                    {% for env in assign_envelopes %}
-                                    <option value="{{ env.envelope_id }}">{{ env.name }}</option>
-                                    {% endfor %}
-                                    {% else %}
-                                    <option value="" disabled selected>Create an envelope first</option>
-                                    {% endif %}
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label for="assign-amount">Amount (USD)</label>
-                                <input type="text" id="assign-amount" name="amount_usd"
-                                       placeholder="e.g. 50 or 50.00" required>
-                            </div>
-                            <button type="submit" id="assign-btn" style="width:100%;">Assign Dollars</button>
-                        </form>
-                    </div>
-
-                    <div class="card">
-                        <div class="card-title">
-                            <span>＋</span> Create Envelope
-                        </div>
-                        <p class="card-subtitle">Add a new budget category</p>
-                        <form id="envelope-create-form"
-                              hx-post="/api/v1/dashboard/budget/envelopes"
-                              hx-swap="innerHTML"
-                              hx-target="#pane-vault-body">
-                            <div class="form-group">
-                                <label for="envelope-name">Envelope Name</label>
-                                <input type="text" id="envelope-name" name="name"
-                                       placeholder="e.g. Groceries" required>
-                            </div>
-                            <button type="submit" class="secondary" style="width:100%;">Create Envelope</button>
-                        </form>
-                    </div>
-                </div>
-
-                <!-- Upload & Audit View: Clean Statements & Collapsible Advanced Tools -->
-                <div id="action-content-upload">
-                    <div class="card">
-                        <div class="card-title">
-                            <span>📄</span> Statement Upload
-                        </div>
-                        <p class="card-subtitle">Upload Chase or Schwab statement PDFs to local Vault</p>
-                        <form id="upload-form"
-                              hx-post="/api/v1/dashboard/upload"
-                              hx-encoding="multipart/form-data"
-                              hx-swap="innerHTML"
-                              hx-target="#pane-vault-body"
-                              hx-indicator="#pane-vault-body">
-                            <div class="form-group">
-                                <label for="statement-file">Statement PDF</label>
-                                <input type="file" id="statement-file" name="file" accept="application/pdf,.pdf" required>
-                            </div>
-                            <button type="submit" id="upload-btn" style="width:100%;">Upload to Vault</button>
-                        </form>
-                    </div>
-
-                    <div class="card">
-                        <div class="card-title">
-                            <span>⚙️</span> Audit &amp; Ledger
-                        </div>
-                        <p class="card-subtitle">Query Vault ledger or verify with Frontier model</p>
-                        <form hx-post="/api/v1/dashboard/analyze"
-                              hx-swap="innerHTML"
-                              hx-target="#pane-vault-body"
-                              hx-indicator="#pane-vault-body">
-                            <div class="form-group">
-                                <label for="question">Refresh latest ledger</label>
-                                <textarea id="question" name="question" placeholder="Optional note" required>Show latest Vault ledger</textarea>
-                            </div>
-                            <button type="submit" id="submit-btn" class="secondary" style="width:100%;">Show latest ledger</button>
-                        </form>
-                        <form id="frontier-audit-form"
-                              hx-post="/api/v1/dashboard/frontier-audit"
-                              hx-swap="innerHTML"
-                              hx-target="#frontier-result"
-                              style="margin-top:16px;">
-                            <div class="form-group">
-                                <label for="frontier-group-by">Aggregate group</label>
-                                <input type="text" id="frontier-group-by" name="group_by"
-                                       value="transaction_category" required>
-                            </div>
-                            <button type="submit" id="frontier-verify-btn" class="secondary" style="width:100%;">Verify &amp; Analyze with Frontier Model</button>
-                        </form>
-                        <div id="frontier-result"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="pane" id="pane-vault">
-            <div class="pane-header">
-                <span class="icon">&#128274;</span>The Local Vault
-                <span style="float:right;font-weight:400;font-size:0.75rem;color:#8b949e">
-                    <button type="button" id="header-btn-overview" class="action-tab-btn active"
-                            style="padding:4px 10px;font-size:0.75rem;margin-right:4px;"
-                            hx-get="/api/v1/dashboard/overview"
-                            hx-target="#pane-vault-body"
-                            hx-swap="innerHTML"
-                            onclick="switchActionTab('upload')">Overview</button>
-                    <button type="button" id="header-btn-budget" class="secondary"
-                            style="padding:4px 10px;font-size:0.75rem;"
-                            hx-get="/api/v1/dashboard/budget"
-                            hx-target="#pane-vault-body"
-                            hx-swap="innerHTML"
-                            onclick="switchActionTab('budget')">Budget</button>
-                </span>
-            </div>
-            <div class="pane-body" id="pane-vault-body">
+            </header>
+            <div class="content" id="pane-vault-body">
                 {{ vault_pane_html | safe }}
             </div>
-        </div>
+        </main>
     </div>
-    <script>
-        function switchActionTab(tab) {
-            var budgetContent = document.getElementById("action-content-budget");
-            var uploadContent = document.getElementById("action-content-upload");
-            var btnBudget = document.getElementById("tab-btn-budget");
-            var btnUpload = document.getElementById("tab-btn-upload");
-            var headerBudget = document.getElementById("header-btn-budget");
-            var headerOverview = document.getElementById("header-btn-overview");
 
-            if (tab === "budget") {
-                if (budgetContent) budgetContent.style.display = "block";
-                if (uploadContent) uploadContent.style.display = "none";
-                if (btnBudget) { btnBudget.setAttribute("class", "action-tab-btn active"); }
-                if (btnUpload) { btnUpload.setAttribute("class", "action-tab-btn secondary"); }
-                if (headerBudget) { headerBudget.setAttribute("class", "action-tab-btn active"); }
-                if (headerOverview) { headerOverview.setAttribute("class", "secondary"); }
-            } else {
-                if (budgetContent) budgetContent.style.display = "none";
-                if (uploadContent) uploadContent.style.display = "block";
-                if (btnUpload) { btnUpload.setAttribute("class", "action-tab-btn active"); }
-                if (btnBudget) { btnBudget.setAttribute("class", "action-tab-btn secondary"); }
-                if (headerOverview) { headerOverview.setAttribute("class", "action-tab-btn active"); }
-                if (headerBudget) { headerBudget.setAttribute("class", "secondary"); }
+    <script>
+        function currentTheme() {
+            return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+        }
+
+        function applyTheme(theme) {
+            var toggle = document.getElementById("theme-toggle");
+            var label = theme === "dark" ? "Switch to light theme" : "Switch to dark theme";
+            document.documentElement.setAttribute("data-theme", theme);
+            toggle.setAttribute("aria-label", label);
+            toggle.setAttribute("title", label);
+            try {
+                window.localStorage.setItem("sapphire-theme", theme);
+            } catch (err) {
+                // Storage can be blocked (private mode); the toggle still works for this page view.
             }
         }
+
+        document.getElementById("theme-toggle").addEventListener("click", function () {
+            applyTheme(currentTheme() === "dark" ? "light" : "dark");
+        });
+        applyTheme(currentTheme());
+
+        var PAGE_TITLES = {
+            overview: "Overview",
+            budget: "Budget",
+            statements: "Statements",
+            audit: "Audit"
+        };
+
+        // Highlight the sidebar item and update the topbar title from data-nav.
+        document.body.addEventListener("htmx:afterSwap", function (event) {
+            if (!event.detail.target || event.detail.target.id !== "pane-vault-body") {
+                return;
+            }
+            var fragment = event.detail.target.querySelector("[data-nav]");
+            if (!fragment) {
+                return;
+            }
+            var nav = fragment.getAttribute("data-nav");
+            var active = "nav-" + nav;
+            document.querySelectorAll(".nav button").forEach(function (button) {
+                if (button.id === active) {
+                    button.setAttribute("aria-current", "page");
+                } else {
+                    button.removeAttribute("aria-current");
+                }
+            });
+            var title = document.getElementById("topbar-title");
+            if (title && PAGE_TITLES[nav]) {
+                title.textContent = PAGE_TITLES[nav];
+            }
+            window.scrollTo({ top: 0 });
+        });
+
+        // Hidden file input: surface the chosen basename in the dropzone label.
+        document.body.addEventListener("change", function (event) {
+            var input = event.target;
+            if (!input || input.id !== "statement-file") {
+                return;
+            }
+            var dropzone = document.getElementById("upload-dropzone");
+            var prompt = document.getElementById("upload-prompt");
+            var filename = document.getElementById("upload-filename");
+            if (!dropzone || !prompt || !filename) {
+                return;
+            }
+            var chosen = input.files && input.files[0] ? input.files[0].name : "";
+            if (chosen) {
+                prompt.textContent = chosen;
+                filename.textContent = "Ready to upload · stays on this Vault";
+                dropzone.classList.add("has-file");
+            } else {
+                prompt.textContent = "Drop a PDF here or click to choose";
+                filename.textContent = "PDF only · parsed on this Vault";
+                dropzone.classList.remove("has-file");
+            }
+        });
 
         document.body.addEventListener("htmx:beforeSwap", function (event) {
             var xhr = event.detail.xhr;
@@ -251,10 +199,11 @@
             var isFrontier = url.indexOf("/api/v1/dashboard/frontier-audit") !== -1;
             var isUpload = url.indexOf("/api/v1/dashboard/upload") !== -1;
             var isAnalyze = url.indexOf("/api/v1/dashboard/analyze") !== -1;
-            var isStatement = url.indexOf("/api/v1/dashboard/statements/") !== -1;
+            var isStatement = url.indexOf("/api/v1/dashboard/statements") !== -1;
             var isOverview = url.indexOf("/api/v1/dashboard/overview") !== -1;
             var isBudget = url.indexOf("/api/v1/dashboard/budget") !== -1;
-            if ((isFrontier || isUpload || isAnalyze || isStatement || isOverview || isBudget) && xhr.status === 400) {
+            var isAudit = url.indexOf("/api/v1/dashboard/audit") !== -1;
+            if ((isFrontier || isUpload || isAnalyze || isStatement || isOverview || isBudget || isAudit) && xhr.status === 400) {
                 event.detail.shouldSwap = true;
                 event.detail.isError = false;
             }
