@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "pii_policy": "booleans_and_counts_only_no_spans",
+  "flags": {
+    "has_jpmorgan_chase": false,
+    "has_chase_credit_card": false,
+    "has_chase_ultimate": true,
+    "has_ultimate_rewards": true,
+    "has_credit_card": false,
+    "has_cardmember": true,
+    "has_account_summary": true,
+    "has_previous_balance": true,
+    "has_new_balance": true,
+    "has_payment_due": true,
+    "has_minimum_payment": true,
+    "has_payment_credits_label": true,
+    "has_purchases": true,
+    "has_payments": true,
+    "has_transactions_this_cycle": true,
+    "has_transactions": true,
+    "has_merchant_txn_header": true,
+    "has_opening_closing_date": true,
+    "has_account_number_label": true
+  },
+  "counts": {
+    "pii_token_count": 28,
+    "money_token_count": 18,
+    "char_count": 11207,
+    "line_count": 266
+  },
+  "source_kind": "pdf",
+  "source_opaque": "input_pdf"
+}

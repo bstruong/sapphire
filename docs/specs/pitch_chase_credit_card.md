@@ -13,7 +13,7 @@ The household dogfoods **Chase credit cards**, not Chase checking. Checking live
 
 ## Appetite
 
-**Small Batch (2 weeks).** Good enough: a registered `chase_credit_card` adapter that matches Chase card page‑1 branding exclusively, parses the synthetic SAPPHIRE card contract (ACCOUNT SUMMARY + signed TRANSACTIONS), reconciles integer cents, and uploads via the dashboard. Schwab checking and SFFCU stay out of scope.
+**Small Batch (2 weeks).** Good enough: a registered `chase_credit_card` adapter that matches Chase card page‑1 branding exclusively, parses a **layout-faithful redacted PDF** (real amounts, tokenized PII), reconciles integer cents, and uploads via the dashboard. Schwab checking and SFFCU stay out of scope.
 
 ## Solution (breadboard)
 
@@ -23,13 +23,14 @@ flowchart LR
   registry --> chaseCard[chase_credit_card]
   registry --> chaseDep[chase_depository]
   chaseCard --> canonical[Canonical_card_ledger]
-  sanitizer[medi-cal_sanitizer_layout_skeleton] --> fixture[Synthetic_fixture_JSON]
-  fixture --> tests[TDD_and_QA]
+  sanitizer[sanitize_jarvis_export_probe] --> redacted[redacted_PDF_fixture]
+  redacted --> tests[TDD_and_QA]
 ```
 
-1. Offline fixture factory (medi-cal-sanitizer): sanitize → opaque JARVIS report → `layout_skeleton.py` synthetic JSON (agent never reads raw/sanitized statement bodies).
-2. `ChaseCreditCardAdapter` registered next to depository; mutual exclusion on card vs checking markers.
+1. Offline fixture factory (medi-cal-sanitizer): sanitize → opaque JARVIS report → `export_redacted_pdf.py` → `layout_probe.py` (agent never reads raw/sanitized statement bodies).
+2. `ChaseCreditCardAdapter` registered next to depository; mutual exclusion on card vs checking markers; real Chase labels (`Payment, Credits`, `TRANSACTIONS THIS CYCLE`).
 3. Honest upload copy listing supported domains (Chase **card**, Schwab **brokerage**, etc.).
+4. Obsolete synthetic Standard-Card-shaped JSON kept under `docs/specs/obsolete/` for history only.
 
 ## Visuals (shaping)
 
@@ -51,7 +52,7 @@ flowchart LR
 ## Done-when
 
 - [x] Executable QA: `uv run python scripts/qa_chase_credit_card.py`
-- [x] Manual UI QA: upload synthetic Chase card PDF from fixture render; expect Vault Ledger. Non-card / unknown bank still `ADAPTER_MATCH_FAILED`.
+- [x] Manual UI QA: upload `tests/fixtures/redacted/chase_credit_card_sample.pdf`; expect Vault Ledger. Non-card / unknown bank still `ADAPTER_MATCH_FAILED`.
 - [x] Wireframe/copy note linked
 - [ ] Core invariants + CI gates on PR
 - [ ] GitHub Project board updated on merge

@@ -17,6 +17,7 @@ env/
 
 # Financial fixtures/PDF dumps
 *.pdf
+!tests/fixtures/redacted/*.pdf
 tests/fixtures/private/
 dumps/
 data/

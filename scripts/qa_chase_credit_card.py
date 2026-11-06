@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
-"""QA: Chase credit card adapter (exclusive match + integer-cent reconcile).
+"""QA: Chase credit card adapter against redacted PDF (happy) + negatives.
 
 Verifies:
-1. Synthetic Chase card fixture matches chase_credit_card only.
+1. Redacted Chase card PDF matches chase_credit_card only.
 2. Chase checking still matches chase_depository only.
 3. Standard card still matches standard_credit_card only.
 4. Canonical parse reconciles summary buckets and net change (integer cents).
 5. Unknown bank fails loud with AdapterRegistryError.
+
+Manual UI QA:
+  uv run uvicorn app.api.app:app --host 127.0.0.1 --port 8000
+  Open http://127.0.0.1:8000/dashboard
+  Upload tests/fixtures/redacted/chase_credit_card_sample.pdf
+  Expect Vault Ledger (not ADAPTER_MATCH_FAILED).
 """
 
 from __future__ import annotations
@@ -19,6 +25,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "tests" / "fixtures"
+REDACTED_CARD = FIXTURES / "redacted" / "chase_credit_card_sample.pdf"
 
 
 def _pass(msg: str) -> None:
@@ -48,7 +55,7 @@ def _render_pdf(fixture_name: str, target: Path) -> Path:
 
 def main() -> int:
     print("=" * 70)
-    print("QA: Chase credit card adapter")
+    print("QA: Chase credit card adapter (redacted PDF)")
     print("=" * 70)
     failures = 0
 
@@ -62,9 +69,12 @@ def main() -> int:
 
     registry = get_default_registry()
 
+    if not REDACTED_CARD.is_file():
+        _fail(f"Missing redacted fixture: {REDACTED_CARD}")
+        return 1
+
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
-        card_pdf = _render_pdf("chase_credit_card_happy", tmp_path / "chase_card.pdf")
         checking_pdf = _render_pdf(
             "chase_checking_happy", tmp_path / "chase_checking.pdf"
         )
@@ -72,14 +82,14 @@ def main() -> int:
 
         print("\n[Step 1: Exclusive matching]")
         if (
-            ChaseCreditCardAdapter().matches(card_pdf)
-            and not ChaseDepositoryAdapter().matches(card_pdf)
-            and not StandardCreditCardAdapter().matches(card_pdf)
-            and registry.match(card_pdf).adapter_id == "chase_credit_card"
+            ChaseCreditCardAdapter().matches(REDACTED_CARD)
+            and not ChaseDepositoryAdapter().matches(REDACTED_CARD)
+            and not StandardCreditCardAdapter().matches(REDACTED_CARD)
+            and registry.match(REDACTED_CARD).adapter_id == "chase_credit_card"
         ):
-            _pass("Chase card fixture → chase_credit_card exclusively")
+            _pass("Redacted Chase card PDF → chase_credit_card exclusively")
         else:
-            _fail("Chase card fixture matching failed exclusivity")
+            _fail("Redacted Chase card matching failed exclusivity")
             failures += 1
 
         if registry.match(checking_pdf).adapter_id == "chase_depository":
@@ -97,23 +107,20 @@ def main() -> int:
         print("\n[Step 2: Canonical parse + integer cents]")
         adapter = ChaseCreditCardAdapter()
         raw = extract_pdf_to_raw(
-            file_path=card_pdf,
+            file_path=REDACTED_CARD,
             adapter_id=adapter.adapter_id,
             adapter_version=adapter.adapter_version,
-            original_basename="chase_card.pdf",
+            original_basename=REDACTED_CARD.name,
         )
         account, statement, summary, txns = adapter.parse_canonical(raw)
-        fixture = json.loads(
-            (FIXTURES / "chase_credit_card_happy.json").read_text(encoding="utf-8")
-        )
-        cents = fixture["summary_cents"]
         if (
             account.institution == "Chase"
             and account.account_type == AccountType.CREDIT_CARD
-            and account.account_mask == "*0001"
-            and statement.opening_balance_cents == cents["previous_balance_cents"]
-            and statement.closing_balance_cents == cents["new_balance_cents"]
-            and summary.purchases_cents == cents["purchases_cents"]
+            and statement.opening_balance_cents == 3259
+            and statement.closing_balance_cents == 3282
+            and summary.purchases_cents == 3282
+            and summary.payments_credits_cents == 3259
+            and len(txns) == 3
             and sum(t.amount_cents for t in txns) == statement.net_change_cents
         ):
             _pass("Canonical Chase card ledger reconciles in integer cents")
