@@ -104,6 +104,17 @@ def test_mutation_self_hosted_policy(nightly: str) -> None:
         "mutation job does not install Playwright",
         "playwright install" not in nightly,
     )
+    assert_condition(
+        "mutation does not use DinD services postgres (circuit breaker)",
+        re.search(r"(?m)^\s+services:\s*$", nightly) is None
+        and "image: postgres:" not in nightly,
+        "Watchtower DinD whiteout EPERM — use host Postgres :54329 instead.",
+    )
+    assert_condition(
+        "mutation points at host Postgres sapphire_test on :54329",
+        "54329/sapphire_test" in nightly and "WATCHTOWER_HOST_IP" in nightly,
+        "Must resolve Watchtower host IP and use :54329/sapphire_test.",
+    )
 
 
 def test_docs_path_e2e_skip(ci: str) -> None:
