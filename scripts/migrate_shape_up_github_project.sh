@@ -190,7 +190,8 @@ add_item "Account overview home (YNAB-useful)" "Shipped — PR #50. USD overview
 add_item "Dashboard refresh (Modern UI/UX)" "In-bet. Single nav sidebar, prefers-color-scheme + toggle, KPI cards, zero remote assets. Mark Shipped on merge." "In-bet" "Small Batch" "docs/specs/pitch_dashboard_refresh.md"
 
 # Raw backlog
-add_item "Additional institution adapters" "Beyond Chase/Schwab fixtures." "Raw" "n/a" ""
+add_item "Chase credit card adapter" "In-bet. Exclusive chase_credit_card matcher + synthetic fixture from sanitizer skeleton. Mark Shipped on merge." "In-bet" "Small Batch" "docs/specs/pitch_chase_credit_card.md"
+add_item "Additional institution adapters" "Beyond Chase/Schwab fixtures. Schwab checking + SFFCU still raw." "Raw" "n/a" ""
 add_item "Synthetic PDF fixtures for layout-hard statements" "Beyond JSON token fixtures." "Raw" "n/a" ""
 add_item "Grafana Tempo / Prometheus / Loki dashboards" "Depends on Watchtower pitch." "Raw" "n/a" ""
 add_item "Traefik ingress hardening notes" "Vault deployment." "Raw" "n/a" ""
