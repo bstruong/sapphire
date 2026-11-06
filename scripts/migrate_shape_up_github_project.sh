@@ -191,7 +191,8 @@ add_item "Dashboard refresh (Modern UI/UX)" "Shipped — stacked under PR #61 / 
 
 # Raw backlog
 add_item "Chase credit card adapter" "Shipped — PR #61. Redacted PDF fixture + exclusive chase_credit_card matcher." "Shipped" "Small Batch" "docs/specs/pitch_chase_credit_card.md"
-add_item "Schwab checking (Investor Checking) adapter" "In-bet. Exclusive schwab_checking vs brokerage + dogfood DB isolation + liquid/RTA + money-debug. Mark Shipped on merge." "In-bet" "Small Batch" "docs/specs/pitch_schwab_checking.md"
+add_item "Schwab checking (Investor Checking) adapter" "Shipped — PR #62. Checking adapter + DB isolation + liquid/RTA + money-debug." "Shipped" "Small Batch" "docs/specs/pitch_schwab_checking.md"
+add_item "History charts (balances + categories)" "Shaped. Overview History: closing balances over periods + category income/spend by month. Pitch + wireframe ready to bet." "Shaped" "Small Batch" "docs/specs/pitch_history_charts.md"
 add_item "Additional institution adapters" "Beyond locked stack. SFFCU + Schwab savings/multi-product still raw." "Raw" "n/a" ""
 add_item "Synthetic PDF fixtures for layout-hard statements" "Beyond JSON token fixtures." "Raw" "n/a" ""
 add_item "Grafana Tempo / Prometheus / Loki dashboards" "Depends on Watchtower pitch." "Raw" "n/a" ""

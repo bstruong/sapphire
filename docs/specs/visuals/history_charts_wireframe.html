@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SAPPHIRE — History charts (proposed)</title>
+  <style>
+    :root {
+      --ink: #1a1a1a;
+      --mute: #5c5c5c;
+      --line: #222;
+      --paper: #e8eef2;
+      --panel: #fff;
+      --accent: #1a3a5c;
+      --spend: #6b1d1d;
+      --income: #1a4d2e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Mono", "Courier New", monospace;
+      background: var(--paper);
+      color: var(--ink);
+      line-height: 1.4;
+    }
+    header {
+      padding: 1.25rem 1.5rem;
+      border-bottom: 3px solid var(--line);
+    }
+    header h1 {
+      margin: 0;
+      font-size: 1.1rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    header p {
+      margin: 0.4rem 0 0;
+      color: var(--mute);
+      font-size: 0.85rem;
+      max-width: 52rem;
+    }
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem 1rem;
+      margin-top: 0.75rem;
+      font-size: 0.75rem;
+      color: var(--mute);
+    }
+    .meta span {
+      border: 1px dashed var(--mute);
+      padding: 0.15rem 0.5rem;
+    }
+    main {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      min-height: calc(100vh - 8rem);
+      border-bottom: 3px solid var(--line);
+    }
+    @media (max-width: 900px) {
+      main { grid-template-columns: 1fr; }
+    }
+    .pane {
+      background: var(--panel);
+      border-right: 2px solid var(--line);
+      padding: 1rem 1.25rem 1.5rem;
+    }
+    .pane:last-child { border-right: none; }
+    .pane h2 {
+      margin: 0 0 0.75rem;
+      font-size: 0.95rem;
+      border-bottom: 2px solid var(--line);
+      padding-bottom: 0.4rem;
+      text-transform: uppercase;
+    }
+    .eyebrow {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--mute);
+      margin-bottom: 0.35rem;
+    }
+    .box {
+      border: 2px solid var(--line);
+      padding: 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+    .kpi-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+    }
+    .kpi {
+      border: 2px solid var(--line);
+      padding: 0.5rem;
+      font-size: 0.8rem;
+    }
+    .kpi .v { font-size: 1rem; font-weight: 700; }
+    .acct {
+      border-bottom: 1px dashed var(--line);
+      padding: 0.4rem 0;
+      font-size: 0.8rem;
+    }
+    .chart {
+      border: 2px dashed var(--accent);
+      min-height: 7rem;
+      padding: 0.5rem;
+      margin-top: 0.5rem;
+      position: relative;
+    }
+    .chart svg { width: 100%; height: 6.5rem; display: block; }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      font-size: 0.7rem;
+      margin-top: 0.4rem;
+      color: var(--mute);
+    }
+    .legend i {
+      display: inline-block;
+      width: 0.7rem;
+      height: 0.7rem;
+      margin-right: 0.25rem;
+      vertical-align: middle;
+      border: 1px solid var(--line);
+    }
+    .empty {
+      border: 2px solid var(--spend);
+      color: var(--spend);
+      padding: 0.6rem;
+      font-size: 0.8rem;
+      margin-top: 0.5rem;
+    }
+    footer {
+      padding: 0.75rem 1.5rem;
+      font-size: 0.75rem;
+      color: var(--mute);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>History charts — Overview History section</h1>
+    <p>
+      Fat-marker wireframe for <code>pitch_history_charts.md</code>.
+      Baseline = snapshot Overview (latest statement only).
+      Proposed = same shell + History: closing balances over periods + category income/spend by month.
+      Synthetic amounts only. Server-rendered SVG; no CDN.
+    </p>
+    <div class="meta">
+      <span>Status: Proposed (shaping)</span>
+      <span>Surface: Overview (no new nav)</span>
+      <span>Appetite: Small Batch</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="pane" aria-label="Baseline">
+      <h2>Baseline — snapshot Overview</h2>
+      <div class="eyebrow">Shipped today</div>
+      <div class="kpi-row">
+        <div class="kpi"><div class="eyebrow">Liquid cash</div><div class="v">$12,034.85</div></div>
+        <div class="kpi"><div class="eyebrow">Brokerage</div><div class="v">$88,000.00</div></div>
+        <div class="kpi"><div class="eyebrow">Ready to Assign</div><div class="v">$1,200.00</div></div>
+      </div>
+      <div class="box">
+        <div class="eyebrow">Accounts (latest period only)</div>
+        <div class="acct">Schwab Checking · *1234 · 2026-08 · Closing $6,034.85</div>
+        <div class="acct">Chase Card · *0002 · 2026-08 · Closing $32.82</div>
+        <div class="acct">Schwab Brokerage · *5678 · 2026-08 · Closing cash $…</div>
+      </div>
+      <p class="eyebrow">No multi-period series. No category month bars.</p>
+    </section>
+
+    <section class="pane" aria-label="Proposed">
+      <h2>Proposed — Overview + History</h2>
+      <div class="eyebrow">Same KPIs + accounts, then History</div>
+      <div class="kpi-row">
+        <div class="kpi"><div class="eyebrow">Liquid cash</div><div class="v">$12,034.85</div></div>
+        <div class="kpi"><div class="eyebrow">Brokerage</div><div class="v">$88,000.00</div></div>
+        <div class="kpi"><div class="eyebrow">Ready to Assign</div><div class="v">$1,200.00</div></div>
+      </div>
+
+      <div class="box">
+        <div class="eyebrow">History · Closing balances (statement end)</div>
+        <div class="chart" aria-label="Balance history SVG placeholder">
+          <svg viewBox="0 0 320 100" role="img" aria-label="SYNTHETIC liquid closing balances">
+            <polyline fill="none" stroke="#1a3a5c" stroke-width="3"
+              points="20,70 80,55 140,50 200,40 260,35 300,30" />
+            <polyline fill="none" stroke="#5c5c5c" stroke-width="2" stroke-dasharray="4 3"
+              points="20,80 80,78 140,60 200,58 260,50 300,48" />
+            <text x="20" y="95" font-size="8" fill="#5c5c5c">Jun</text>
+            <text x="140" y="95" font-size="8" fill="#5c5c5c">Aug</text>
+            <text x="280" y="95" font-size="8" fill="#5c5c5c">Oct</text>
+          </svg>
+          <div class="legend">
+            <span><i style="background:#1a3a5c"></i>Liquid total</span>
+            <span><i style="background:#5c5c5c"></i>Per-account (example)</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="box">
+        <div class="eyebrow">History · Category income / spend (by month)</div>
+        <div class="chart" aria-label="Category history SVG placeholder">
+          <svg viewBox="0 0 320 100" role="img" aria-label="SYNTHETIC category bars">
+            <rect x="30" y="40" width="18" height="40" fill="#1a4d2e" />
+            <rect x="52" y="55" width="18" height="25" fill="#6b1d1d" />
+            <rect x="100" y="30" width="18" height="50" fill="#1a4d2e" />
+            <rect x="122" y="50" width="18" height="30" fill="#6b1d1d" />
+            <rect x="170" y="35" width="18" height="45" fill="#1a4d2e" />
+            <rect x="192" y="45" width="18" height="35" fill="#6b1d1d" />
+            <rect x="240" y="25" width="18" height="55" fill="#1a4d2e" />
+            <rect x="262" y="60" width="18" height="20" fill="#6b1d1d" />
+            <text x="40" y="95" font-size="8" fill="#5c5c5c">Jul</text>
+            <text x="110" y="95" font-size="8" fill="#5c5c5c">Aug</text>
+            <text x="180" y="95" font-size="8" fill="#5c5c5c">Sep</text>
+            <text x="250" y="95" font-size="8" fill="#5c5c5c">Oct</text>
+          </svg>
+          <div class="legend">
+            <span><i style="background:#1a4d2e"></i>Income (deposit…)</span>
+            <span><i style="background:#6b1d1d"></i>Spend (purchase/withdrawal…)</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="empty" role="status">
+        Empty (&lt;2 statement periods / no categorized txns): loud inline alert — not a blank chart.
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    Pitch: <code>docs/specs/pitch_history_charts.md</code> ·
+    Manual UI QA will seed via <code>scripts/seed_history_charts.py</code> then open Overview History.
+  </footer>
+</body>
+</html>
