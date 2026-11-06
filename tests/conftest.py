@@ -9,15 +9,22 @@ import subprocess
 import time
 from collections.abc import Iterator
 from pathlib import Path
+from urllib.parse import urlparse
 
 import psycopg
 import pytest
 
-from app.db.connection import init_db
+from app.db.connection import DEFAULT_TEST_DATABASE_URL, init_db
 from app.models.canonical import RawStatement
 
 logger = logging.getLogger(__name__)
 FIXTURES_DIR: Path = Path(__file__).parent / "fixtures"
+
+
+def _is_test_database_url(url: str) -> bool:
+    """Reject dogfood/runtime DB URLs so pytest cannot truncate Vault data."""
+    name = urlparse(url).path.lstrip("/").lower()
+    return name.endswith(("_test", "_pytest"))
 
 
 @pytest.fixture()
@@ -42,17 +49,26 @@ def schwab_raw_statement(schwab_sample_path: Path) -> RawStatement:
 
 @pytest.fixture(scope="session")
 def postgres_url() -> str:
-    """Resolve and guarantee an active PostgreSQL database URL for test suite."""
+    """Resolve an isolated PostgreSQL URL for the test suite only.
+
+    Never falls back to ``DATABASE_URL`` (dogfood/Vault). Only
+    ``TEST_DATABASE_URL`` or known ``*_test`` defaults are considered.
+    """
     candidate_urls = [
         os.environ.get("TEST_DATABASE_URL"),
-        os.environ.get("DATABASE_URL"),
-        "postgresql://postgres:sapphire@localhost:54329/sapphire_test",
+        DEFAULT_TEST_DATABASE_URL,
         "postgresql://postgres:postgres@localhost:5432/sapphire_test",
         "postgresql://postgres:assassin@localhost:54329/assassin_test",
         "postgresql://postgres:postgres@localhost:5432/assassin_test",
     ]
     for url in candidate_urls:
         if not url:
+            continue
+        if not _is_test_database_url(url):
+            logger.warning(
+                "Ignoring non-test database URL for pytest: %s",
+                urlparse(url).path,
+            )
             continue
         try:
             with psycopg.connect(url, connect_timeout=1) as conn:
@@ -82,16 +98,22 @@ def postgres_url() -> str:
                 capture_output=True,
                 check=False,
             )
-            # wait up to 10 seconds for container readiness
-            container_url = (
-                "postgresql://postgres:sapphire@localhost:54329/sapphire_test"
-            )
+            container_url = DEFAULT_TEST_DATABASE_URL
+            admin_url = "postgresql://postgres:sapphire@localhost:54329/postgres"
             for _ in range(20):
                 time.sleep(0.5)
                 try:
                     with psycopg.connect(container_url, connect_timeout=1) as conn:
                         conn.execute("SELECT 1;")
-                        return container_url
+                    with psycopg.connect(
+                        admin_url, connect_timeout=1, autocommit=True
+                    ) as admin:
+                        row = admin.execute(
+                            "SELECT 1 FROM pg_database WHERE datname = 'sapphire'"
+                        ).fetchone()
+                        if row is None:
+                            admin.execute("CREATE DATABASE sapphire")
+                    return container_url
                 except psycopg.Error as exc:
                     logger.debug("Waiting for postgres container: %s", exc)
         except OSError as exc:
@@ -99,6 +121,29 @@ def postgres_url() -> str:
 
     pytest.skip("PostgreSQL test database is not accessible")
     return ""
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _isolate_app_database_url(postgres_url: str) -> Iterator[None]:
+    """Point the test process DATABASE_URL at sapphire_test only.
+
+    Leaves the caller's shell / uvicorn env untouched (separate process).
+    """
+    previous_database_url = os.environ.get("DATABASE_URL")
+    previous_test_url = os.environ.get("TEST_DATABASE_URL")
+    os.environ["TEST_DATABASE_URL"] = postgres_url
+    os.environ["DATABASE_URL"] = postgres_url
+    try:
+        yield
+    finally:
+        if previous_database_url is None:
+            os.environ.pop("DATABASE_URL", None)
+        else:
+            os.environ["DATABASE_URL"] = previous_database_url
+        if previous_test_url is None:
+            os.environ.pop("TEST_DATABASE_URL", None)
+        else:
+            os.environ["TEST_DATABASE_URL"] = previous_test_url
 
 
 @pytest.fixture()

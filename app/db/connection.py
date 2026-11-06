@@ -14,19 +14,26 @@ from app.db.migrate import apply_migrations
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_DATABASE_URL = "postgresql://postgres:sapphire@localhost:54329/sapphire_test"
+# Dogfood / local Vault default. Pytest must use TEST_DATABASE_URL → sapphire_test
+# and must never fall back to this URL (see tests/conftest.py).
+DEFAULT_DATABASE_URL = "postgresql://postgres:sapphire@localhost:54329/sapphire"
+DEFAULT_TEST_DATABASE_URL = (
+    "postgresql://postgres:sapphire@localhost:54329/sapphire_test"
+)
 SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 
 
 def get_database_url(override_url: str | None = None) -> str:
-    """Return database connection URL from override, environment, or default."""
+    """Return database connection URL from override, environment, or default.
+
+    Application/runtime reads ``DATABASE_URL`` only (dogfood). Pytest sets
+    ``DATABASE_URL`` to the isolated test DB for the test process; it does not
+    consult ``TEST_DATABASE_URL`` here so a stray test env cannot redirect the
+    Vault process.
+    """
     if override_url:
         return override_url
-    return (
-        os.environ.get("DATABASE_URL")
-        or os.environ.get("TEST_DATABASE_URL")
-        or DEFAULT_DATABASE_URL
-    )
+    return os.environ.get("DATABASE_URL") or DEFAULT_DATABASE_URL
 
 
 def get_connection(url: str | None = None) -> psycopg.Connection:

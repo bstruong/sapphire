@@ -6,6 +6,7 @@ JSON and HTMX callers can map to their surface.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -16,6 +17,7 @@ from app.adapters.base import CombinedStatementAdapter
 from app.adapters.registry import AdapterRegistryError, get_default_registry
 from app.db.connection import get_db_connection
 from app.db.repository import (
+    get_canonical_ingest_by_sha256,
     persist_canonical_statement,
     persist_raw_extraction,
     persist_raw_payload,
@@ -65,6 +67,35 @@ def ingest_pdf_path(
     tmp_path: Path, original_basename: str
 ) -> IngestSuccess | IngestFailure:
     """Match, extract, reconcile, and persist a statement PDF already on disk."""
+    try:
+        file_bytes = tmp_path.read_bytes()
+    except OSError as exc:
+        return IngestFailure(
+            error_code="EXTRACTION_FAILED",
+            detail=str(exc),
+            http_status=422,
+        )
+    content_sha256 = hashlib.sha256(file_bytes).hexdigest()
+    with get_db_connection() as conn:
+        prior = get_canonical_ingest_by_sha256(conn, content_sha256)
+    if prior is not None:
+        logger.info(
+            "Re-upload of identical PDF bytes; returning prior canonical ingest",
+            extra={
+                "run_id": str(prior["run_id"]),
+                "adapter_id": str(prior["adapter_id"]),
+            },
+        )
+        return IngestSuccess(
+            run_id=prior["run_id"],  # type: ignore[arg-type]
+            raw_payload_id=prior["raw_payload_id"],  # type: ignore[arg-type]
+            adapter_id=str(prior["adapter_id"]),
+            adapter_version=str(prior["adapter_version"]),
+            statements_count=int(prior["statements_count"]),  # type: ignore[arg-type]
+            transactions_count=int(prior["transactions_count"]),  # type: ignore[arg-type]
+            accounts=list(prior["accounts"]),  # type: ignore[arg-type]
+        )
+
     registry = get_default_registry()
     try:
         adapter = registry.match(tmp_path)

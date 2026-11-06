@@ -112,6 +112,7 @@ class TestShell:
         html = client.get("/dashboard").text
         assert 'id="topbar-title"' in html
         assert "Overview" in html
+        assert 'class="topbar-kicker"' in html
         assert 'id="topbar-upload"' in html
         assert "Upload statement" in html
         # Title updates when HTMX swaps a view with data-nav.
@@ -122,6 +123,11 @@ class TestShell:
         html = client.get("/dashboard").text
         assert "Local Vault" in html
         assert "Integer cents" in html
+
+    def test_shell_has_keyboard_skip_link(self, client: TestClient) -> None:
+        html = client.get("/dashboard").text
+        assert 'class="skip-link"' in html
+        assert 'href="#pane-vault-body"' in html
 
     def test_no_inline_styles_or_external_assets(self, client: TestClient) -> None:
         html = client.get("/dashboard").text
@@ -147,6 +153,9 @@ class TestStylesheet:
         assert '[data-theme="light"]' in css
         assert '[data-theme="dark"]' in css
         assert "--accent" in css
+        assert "--sidebar-bg" in css
+        assert "grid-column: span 6" in css
+        assert "@media (max-width: 720px)" in css
         assert "tabular-nums" in css
 
     def test_stylesheet_has_no_remote_resources(self) -> None:
@@ -197,14 +206,16 @@ class TestOverview:
         assert "No persisted statements yet" in html
         assert 'data-nav="overview"' in html
         assert 'hx-get="/api/v1/dashboard/statements"' in html
-        assert "Total closing balance" not in html  # never invent zero balances
+        assert "Liquid cash" not in html  # never invent zero balances
+        assert "Brokerage funds" not in html
 
     def test_kpis_and_clickable_account_rows(
         self, client: TestClient, tmp_path: Path
     ) -> None:
         _upload(client, tmp_path, "chase_checking_happy")
         html = client.get("/api/v1/dashboard/overview", headers=HX).text
-        assert "Total closing balance" in html
+        assert "Liquid cash" in html
+        assert "Brokerage funds" in html
         assert "Ready to Assign" in html
         assert "Last statement" in html
         assert 'class="period"' in html

@@ -93,12 +93,25 @@ class SchwabAdapter(InvestmentStatementAdapter):
                 raise
             raise ValueError(f"Failed to read PDF at {resolved}: {exc}") from exc
 
-        matched = self._HEADER_MARKER.upper() in first_page_text.upper()
-        if matched:
-            logger.debug(
-                "SchwabAdapter matched document.", extra={"file": str(resolved)}
-            )
-        return matched
+        upper = first_page_text.upper()
+        if self._HEADER_MARKER.upper() not in upper:
+            return False
+        # Bank Investor Checking packets belong to SchwabCheckingAdapter.
+        if (
+            "SCHWAB BANK" in upper
+            or "CHARLES SCHWAB BANK" in upper
+            or ("MEMBER FDIC" in upper and "DEBIT CARD" in upper)
+        ):
+            return False
+        brokerage_markers = (
+            "TRANSACTION ACTIVITY" in upper
+            or "BROKERAGE CASH" in upper
+            or "BROKERAGE" in upper
+        )
+        if not brokerage_markers:
+            return False
+        logger.debug("SchwabAdapter matched document.", extra={"file": str(resolved)})
+        return True
 
     # ------------------------------------------------------------------
     # Canonical Schema Declaration

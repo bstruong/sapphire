@@ -107,6 +107,30 @@ class TestAccountOverviewOnLoad:
         assert "Schwab" in response.text or "schwab" in response.text.lower()
         assert "Accounts" in response.text
 
+    def test_overview_splits_liquid_vs_brokerage_funds(
+        self, client: TestClient, tmp_path: Path
+    ) -> None:
+        """Depository = liquid cash; custodial brokerage = non-liquid funds.
+
+        Redacted Schwab checking PDFs are bank-only (no brokerage markers);
+        brokerage arrives as a separate statement/account. Overview must not
+        collapse both into one undifferentiated total.
+        """
+        _upload(client, tmp_path, "chase_checking_happy")
+        _upload(client, tmp_path, "brokerage_cash_happy")
+        response = client.get("/dashboard")
+        assert response.status_code == 200
+        html = response.text
+        assert "Liquid cash" in html
+        assert "Brokerage funds" in html
+        assert "Liquid" in html
+        assert "Non-liquid" in html
+        # chase_checking_happy ending $1,295.00; brokerage_cash_happy ending $13,904.25
+        assert "$1,295.00" in html
+        assert "$13,904.25" in html
+        # Hero must not present a single blended "Total closing balance" only
+        assert "Total closing balance" not in html
+
 
 class TestTransactionDrillIn:
     def test_details_returns_ledger_for_statement(
@@ -128,6 +152,7 @@ class TestTransactionDrillIn:
         assert response.status_code == 200
         assert "Vault Ledger" in response.text
         assert "Chase" in response.text
+        assert "Liquid" in response.text
         assert "SYNTHETIC Payroll" in response.text
         assert "transfer_in" not in response.text
         assert "Deposit" in response.text or "Withdrawal" in response.text

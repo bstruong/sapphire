@@ -35,3 +35,4 @@ Shape Up intentionally avoids high-fidelity pixel comps as a gating artifact. Pr
 | [ynab_budgets_wireframe.html](ynab_budgets_wireframe.html) | **Proposed** — Ready to Assign + envelopes (YNAB budgets bet) |
 | [dashboard_refresh_proposed.html](dashboard_refresh_proposed.html) | **Proposed** — Simple/modern dashboard shell: sidebar nav, KPI cards, dark + light themes, empty/error states ([pitch](../pitch_dashboard_refresh.md)) |
 | [chase_credit_card_copy_note.md](chase_credit_card_copy_note.md) | **Proposed** — Honest supported-upload copy for Chase **card** (not checking) ([pitch](../pitch_chase_credit_card.md)) |
+| [schwab_checking_copy_note.md](schwab_checking_copy_note.md) | **Proposed** — Supported-upload copy includes Schwab Bank **checking** ([pitch](../pitch_schwab_checking.md)) |

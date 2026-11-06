@@ -59,11 +59,16 @@ jobs:
       run: uv sync
     - name: Initialize Test Database Schema
       env:
+        TEST_DATABASE_URL: postgresql://postgres:sapphire@localhost:54329/sapphire_test
         DATABASE_URL: postgresql://postgres:sapphire@localhost:54329/sapphire_test
       run: uv run python -c "from app.db.connection import init_db; init_db()"
     - name: Install Playwright browsers
       run: uv run playwright install --with-deps
     - name: Run test suite with strict coverage gate (>90%)
+      env:
+        TEST_DATABASE_URL: postgresql://postgres:sapphire@localhost:54329/sapphire_test
+        # Pytest session fixture also forces DATABASE_URL → sapphire_test.
+        DATABASE_URL: postgresql://postgres:sapphire@localhost:54329/sapphire_test
       run: uv run pytest --cov=app --cov-fail-under=90 -v
   # Mutation testing moved to .github/workflows/mutation-nightly.yml
   # (schedule + main path pushes + workflow_dispatch). PRs are not blocked by mutmut.

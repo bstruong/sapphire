@@ -58,7 +58,7 @@ def main() -> int:
 
     if not os.environ.get("DATABASE_URL"):
         os.environ["DATABASE_URL"] = (
-            "postgresql://postgres:sapphire@localhost:54329/sapphire_test"
+            "postgresql://postgres:sapphire@localhost:54329/sapphire"
         )
 
     import psycopg
@@ -197,12 +197,13 @@ def main() -> int:
     if ov_pop.status_code == 200:
         html = ov_pop.text
         if (
-            "Total closing balance" in html
+            "Liquid cash" in html
+            and "Brokerage funds" in html
             and "Ready to Assign" in html
             and "Last statement" in html
         ):
             _pass(
-                "Populated Overview renders prominent KPI cards (Total closing, Ready to Assign, Last statement)"
+                "Populated Overview renders liquid vs brokerage KPIs (plus Ready to Assign, Last statement)"
             )
         else:
             _fail("Populated Overview missing required KPI cards")

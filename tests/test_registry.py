@@ -125,13 +125,34 @@ class TestAdapterRegistryMatching:
     def test_match_schwab_adapter(self, tmp_path: Path) -> None:
         pdf_path = create_test_pdf(
             tmp_path / "schwab.pdf",
-            ["CHARLES SCHWAB & CO., INC.", "Statement of Account"],
+            [
+                "CHARLES SCHWAB & CO., INC.",
+                "Brokerage Cash Summary",
+                "TRANSACTION ACTIVITY",
+            ],
         )
         registry = get_default_registry()
         matched = registry.match(pdf_path)
 
         assert isinstance(matched, SchwabAdapter)
         assert matched.adapter_id == "schwab_brokerage"
+
+    def test_match_schwab_checking_adapter(self, tmp_path: Path) -> None:
+        from app.adapters.schwab_checking import SchwabCheckingAdapter
+
+        pdf_path = create_test_pdf(
+            tmp_path / "schwab_bank.pdf",
+            [
+                "Charles Schwab Bank",
+                "Member FDIC",
+                "Schwab Bank Visa Platinum Debit Card",
+            ],
+        )
+        registry = get_default_registry()
+        matched = registry.match(pdf_path)
+
+        assert isinstance(matched, SchwabCheckingAdapter)
+        assert matched.adapter_id == "schwab_checking"
 
     def test_match_vanguard_adapter(self, tmp_path: Path) -> None:
         pdf_path = create_test_pdf(

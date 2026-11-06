@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "pii_policy": "booleans_and_counts_only_no_spans",
+  "flags": {
+    "has_jpmorgan_chase": false,
+    "has_chase_credit_card": false,
+    "has_chase_ultimate": false,
+    "has_ultimate_rewards": false,
+    "has_credit_card": false,
+    "has_cardmember": false,
+    "has_account_summary": false,
+    "has_previous_balance": false,
+    "has_new_balance": false,
+    "has_payment_due": false,
+    "has_minimum_payment": false,
+    "has_payment_credits_label": false,
+    "has_purchases": true,
+    "has_payments": true,
+    "has_transactions_this_cycle": false,
+    "has_transactions": true,
+    "has_merchant_txn_header": false,
+    "has_opening_closing_date": false,
+    "has_account_number_label": true,
+    "has_schwab_bank": true,
+    "has_charles_schwab": true,
+    "has_investor_checking": true,
+    "has_beginning_balance": true,
+    "has_ending_balance": true,
+    "has_deposits_and_credits": true,
+    "has_withdrawals_and_other_debits": true,
+    "has_interest_paid": true,
+    "has_other_fees": true,
+    "has_posted_description": true,
+    "has_member_fdic": true,
+    "has_transaction_activity_brokerage": false
+  },
+  "counts": {
+    "pii_token_count": 28,
+    "money_token_count": 41,
+    "char_count": 7557,
+    "line_count": 143
+  }
+}

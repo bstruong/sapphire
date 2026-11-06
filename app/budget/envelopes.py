@@ -11,6 +11,7 @@ from uuid import UUID
 import psycopg
 
 from app.db.repository import list_recent_statements
+from app.models.enums import AccountDomain
 from app.models.exceptions import AssignExceedsAvailableError, TokenError
 
 logger = logging.getLogger("app.budget.envelopes")
@@ -71,13 +72,19 @@ def list_envelopes(conn: psycopg.Connection) -> list[Envelope]:
 
 
 def _vault_closing_cents(conn: psycopg.Connection) -> int:
-    """Sum latest closing_balance_cents per account (same rule as overview)."""
+    """Sum latest liquid (depository) closings only — Ready to Assign pool.
+
+    Brokerage funds and revolving credit are excluded. Assignable cash is the
+    same bucket as the overview ``Liquid cash`` KPI, not blended net worth.
+    """
     seen: set[UUID] = set()
     total = 0
     for account, statement, _txn_count in list_recent_statements(conn, limit=50):
         if account.account_id in seen:
             continue
         seen.add(account.account_id)
+        if account.account_domain != AccountDomain.DEPOSITORY:
+            continue
         closing = statement.closing_balance_cents
         if type(closing) is not int:
             raise TokenError(
