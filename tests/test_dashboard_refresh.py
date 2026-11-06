@@ -176,7 +176,11 @@ class TestSeedSupportsDrillIn:
         self, client: TestClient, postgres_url: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("DATABASE_URL", postgres_url)
-        from scripts.seed_dashboard import seed
+        try:
+            from scripts.seed_dashboard import seed
+        except ModuleNotFoundError:
+            # mutmut copies app/ (+ tests) into mutants/ without scripts/.
+            pytest.skip("scripts/ missing (not a full repo checkout)")
 
         seed()
         seed()  # idempotent second pass
