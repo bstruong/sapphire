@@ -22,7 +22,8 @@
             <span class="avatar av-{{ block.institution | lower }}">{{ block.institution[:1] }}</span>
             <div>
                 <h2>{{ block.institution }} &middot; {{ block.account_type | human_label }} &middot; {{ block.account_mask }}</h2>
-                <p class="sub period">{{ block.start_date }} &rarr; {{ block.end_date }}</p>
+                <p class="sub period">{{ block.start_date }} &rarr; {{ block.end_date }}
+                    &middot; <span class="chip chip-neutral">{{ block.liquidity_label }}</span></p>
             </div>
         </div>
         <div class="stmt-stats">

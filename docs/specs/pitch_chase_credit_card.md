@@ -1,6 +1,6 @@
 # Pitch: Chase credit card adapter
 
-**Status:** In-bet  
+**Status:** Shipped  
 **Builder:** Cloud agent (Cloud-Build Mode)  
 **Bettor:** Human PM  
 **Appetite:** Small Batch (2 weeks)
@@ -54,8 +54,8 @@ flowchart LR
 - [x] Executable QA: `uv run python scripts/qa_chase_credit_card.py`
 - [x] Manual UI QA: upload `tests/fixtures/redacted/chase_credit_card_sample.pdf`; expect Vault Ledger. Non-card / unknown bank still `ADAPTER_MATCH_FAILED`.
 - [x] Wireframe/copy note linked
-- [ ] Core invariants + CI gates on PR
-- [ ] GitHub Project board updated on merge
+- [x] Core invariants + CI gates on PR
+- [x] GitHub Project board updated on merge
 
 ## Circuit breaker
 

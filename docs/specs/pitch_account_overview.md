@@ -74,7 +74,7 @@ flowchart LR
 
 ## Manual UI QA
 
-1. `set -x DATABASE_URL postgresql://postgres:sapphire@localhost:54329/sapphire_test` (fish) — or your Vault URL
+1. `set -x DATABASE_URL postgresql://postgres:sapphire@localhost:54329/sapphire` (fish) — dogfood Vault DB (never `sapphire_test`)
 2. `uv run uvicorn app.api.app:app --host 127.0.0.1 --port 8000`
 3. Open `http://127.0.0.1:8000/dashboard`
 4. Empty DB: Pane 2 shows **Account overview** + “No persisted statements yet”

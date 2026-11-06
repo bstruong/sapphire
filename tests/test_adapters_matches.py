@@ -102,8 +102,11 @@ def test_schwab_matches(tmp_path: Path):
     with pytest.raises(ValueError, match="PDF has no pages"):
         adapter.matches(empty_doc)
 
-    # Valid schwab
-    schwab = create_pdf(tmp_path / "schwab.pdf", "CHARLES SCHWAB")
+    # Valid schwab brokerage
+    schwab = create_pdf(
+        tmp_path / "schwab.pdf",
+        "CHARLES SCHWAB BROKERAGE TRANSACTION ACTIVITY",
+    )
     assert adapter.matches(schwab) is True
 
     # Non matching

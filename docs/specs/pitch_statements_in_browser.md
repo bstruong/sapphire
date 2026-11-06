@@ -71,7 +71,7 @@ flowchart LR
 
 ## Manual UI QA
 
-1. `export DATABASE_URL=postgresql://postgres:sapphire@localhost:54329/sapphire_test` (or your Vault DB)
+1. `export DATABASE_URL=postgresql://postgres:sapphire@localhost:54329/sapphire` (dogfood Vault DB — never `sapphire_test`)
 2. `uv run uvicorn app.api.app:app --host 127.0.0.1 --port 8000`
 3. Open `http://127.0.0.1:8000/dashboard`
 4. Happy: upload a Chase/Schwab fixture PDF (render via QA script or ingest fixtures) → Pane 2 shows **Vault Ledger** with integer-cent rows

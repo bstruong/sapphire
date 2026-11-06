@@ -12,6 +12,12 @@ Agents must verify their work using the following commands:
 - **Mutation Testing (local / nightly):** `uv run python scripts/run_mutation_on_diff.py --full-allowlist && uv run python scripts/check_mutation_score.py --min-score 55.0 --max-no-tests 0` (PR CI does **not** run mutmut; see `.github/workflows/mutation-nightly.yml`)
 - **Agent Invariant Review:** `uv run python scripts/agent_review.py`
 
+### Database isolation (dogfood vs pytest)
+
+- **Dogfood / Vault (`uvicorn`, `seed_dashboard`, Manual UI QA):** `DATABASE_URL=…/sapphire` (default in `app/db/connection.py`).
+- **Pytest / mutmut only:** `TEST_DATABASE_URL=…/sapphire_test`. Pytest **never** falls back to `DATABASE_URL` and refuses DB names that do not end in `_test` / `_pytest`.
+- Do **not** point uvicorn at `sapphire_test`. Do **not** run `seed_dashboard` against the pytest DB.
+
 ## Core Invariants
 
 Any changes made to the codebase must strictly adhere to these invariants:

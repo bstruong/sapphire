@@ -28,6 +28,34 @@ def test_get_database_url_fallback(monkeypatch):
     assert get_database_url() == DEFAULT_DATABASE_URL
 
 
+def test_get_database_url_ignores_test_database_url(monkeypatch):
+    """Runtime must not silently redirect to the pytest DB via TEST_DATABASE_URL."""
+    monkeypatch.setenv(
+        "TEST_DATABASE_URL",
+        "postgresql://postgres:sapphire@localhost:54329/sapphire_test",
+    )
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    assert get_database_url() == DEFAULT_DATABASE_URL
+
+
+def test_pytest_accepts_only_isolated_test_database_names() -> None:
+    """Pytest must refuse dogfood/Vault DB names so TRUNCATE cannot wipe them."""
+    from tests.conftest import _is_test_database_url
+
+    assert _is_test_database_url(
+        "postgresql://postgres:sapphire@localhost:54329/sapphire_test"
+    )
+    assert _is_test_database_url(
+        "postgresql://postgres:sapphire@localhost:54329/sapphire_pytest"
+    )
+    assert not _is_test_database_url(
+        "postgresql://postgres:sapphire@localhost:54329/sapphire"
+    )
+    assert not _is_test_database_url(
+        "postgresql://postgres:sapphire@localhost:54329/postgres"
+    )
+
+
 def test_get_db_connection_context_manager(postgres_url: str):
     with get_db_connection(postgres_url) as conn:
         result = conn.execute("SELECT 1;").fetchone()

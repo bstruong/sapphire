@@ -113,6 +113,35 @@ class TestReadyToAssign:
             available_after = ready_to_assign_cents(conn)
             assert available_after == available_before - 1_00
 
+    def test_ready_to_assign_excludes_brokerage_and_credit(
+        self, client: TestClient, tmp_path: Path, postgres_url: str
+    ) -> None:
+        """Assignable cash is liquid depository only — never brokerage or cards.
+
+        Checking-only statements must not inherit brokerage closings into
+        Ready to Assign (that inflated dogfood to ~$54k from a ~$6k checking PDF).
+        """
+        _upload(client, tmp_path, "chase_checking_happy")
+        with psycopg.connect(postgres_url) as conn:
+            liquid_only = ready_to_assign_cents(conn)
+        assert liquid_only == 129_500  # chase_checking_happy ending $1,295.00
+
+        _upload(client, tmp_path, "brokerage_cash_happy")
+        with psycopg.connect(postgres_url) as conn:
+            after = ready_to_assign_cents(conn)
+            rows = conn.execute(
+                """
+                SELECT a.account_domain, s.closing_balance_cents
+                FROM accounts a
+                JOIN statements s ON s.account_id = a.account_id
+                ORDER BY a.account_domain
+                """
+            ).fetchall()
+        assert ("depository", 129_500) in rows
+        assert ("custodial_brokerage", 1_390_425) in rows
+        assert after == liquid_only
+        assert after != liquid_only + 1_390_425  # brokerage ending must stay out
+
     def test_empty_vault_ready_is_zero(self, postgres_url: str) -> None:
         from app.db.connection import init_db
 

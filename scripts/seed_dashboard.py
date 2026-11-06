@@ -37,8 +37,9 @@ def _get_or_create_account(
 
 def seed() -> None:
     if not os.environ.get("DATABASE_URL"):
+        # Dogfood Vault DB — never the pytest sapphire_test database.
         os.environ["DATABASE_URL"] = (
-            "postgresql://postgres:sapphire@localhost:54329/sapphire_test"
+            "postgresql://postgres:sapphire@localhost:54329/sapphire"
         )
 
     init_db()

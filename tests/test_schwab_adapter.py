@@ -431,7 +431,8 @@ class TestSchwabAdapterWiring:
         # Happy match
         mock_page = MagicMock()
         mock_page.extract_text.return_value = (
-            "Charles Schwab & Co., Inc. Monthly Statement"
+            "Charles Schwab & Co., Inc. Monthly Statement\n"
+            "Brokerage Cash Summary\nTRANSACTION ACTIVITY"
         )
         mock_pdf = MagicMock()
         mock_pdf.__enter__.return_value = mock_pdf

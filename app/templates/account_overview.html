@@ -6,11 +6,18 @@
 
     <div class="kpis">
         <div class="card hero">
-            <div class="eyebrow">Total closing balance</div>
-            <div class="value num">{{ total_closing_cents | usd_cents }}</div>
+            <div class="eyebrow">Liquid cash</div>
+            <div class="value num">{{ liquid_closing_cents | usd_cents }}</div>
             <div class="meta">
-                <span class="chip {{ 'chip-pos' if total_net_change_cents >= 0 else 'chip-neg' }} num">{{ '+' if total_net_change_cents >= 0 else '' }}{{ total_net_change_cents | usd_cents }}</span>
-                <span>net this period &middot; {{ account_count }} account{{ '' if account_count == 1 else 's' }}</span>
+                <span class="chip {{ 'chip-pos' if liquid_net_change_cents >= 0 else 'chip-neg' }} num">{{ '+' if liquid_net_change_cents >= 0 else '' }}{{ liquid_net_change_cents | usd_cents }}</span>
+                <span>checking &amp; savings &middot; {{ account_count }} account{{ '' if account_count == 1 else 's' }}</span>
+            </div>
+        </div>
+        <div class="card kpi">
+            <div class="eyebrow">Brokerage funds</div>
+            <div class="value num">{{ brokerage_closing_cents | usd_cents }}</div>
+            <div class="foot">
+                <span>Non-liquid cash &amp; invested funds</span>
             </div>
         </div>
         <div class="card kpi">
@@ -57,7 +64,8 @@
                     <span class="avatar av-{{ row.institution | lower }}">{{ row.institution[:1] }}</span>
                     <span>
                         <span class="strong">{{ row.institution }}</span>
-                        <span class="sub">{{ row.account_type | human_label }} &middot; {{ row.account_mask }}</span>
+                        <span class="sub">{{ row.account_type | human_label }} &middot; {{ row.account_mask }}
+                            &middot; <span class="chip chip-neutral">{{ row.liquidity_label }}</span></span>
                     </span>
                     <span class="sub hide-sm"><span class="period">{{ row.start_date }} &rarr; {{ row.end_date }}</span></span>
                     <span class="amount-col muted num hide-sm">{{ row.opening_balance_cents | usd_cents }}</span>

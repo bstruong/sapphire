@@ -40,6 +40,12 @@ from app.mcp.cloud_tools import CloudToolError, get_financial_summary
 from app.models.exceptions import AssignExceedsAvailableError, TokenError
 from app.pipeline.ingest_service import IngestFailure, IngestSuccess, ingest_pdf_path
 from app.presentation.label_format import format_snake_label
+from app.presentation.liquidity import (
+    LIQUIDITY_BROKERAGE,
+    LIQUIDITY_LIQUID,
+    liquidity_class_for_domain,
+    liquidity_label,
+)
 from app.presentation.money_format import format_usd_cents
 from app.presentation.usd_parse import parse_usd_form_to_cents
 
@@ -69,11 +75,15 @@ def _overview_accounts(*, limit: int = 50) -> list[dict[str, Any]]:
             if account.account_id in seen_accounts:
                 continue
             seen_accounts.add(account.account_id)
+            liq = liquidity_class_for_domain(account.account_domain)
             rows.append(
                 {
                     "statement_id": str(statement.statement_id),
                     "institution": account.institution,
                     "account_type": account.account_type.value,
+                    "account_domain": account.account_domain.value,
+                    "liquidity_class": liq,
+                    "liquidity_label": liquidity_label(liq),
                     "account_mask": account.account_mask,
                     "start_date": statement.statement_start_date.isoformat(),
                     "end_date": statement.statement_end_date.isoformat(),
@@ -83,6 +93,23 @@ def _overview_accounts(*, limit: int = 50) -> list[dict[str, Any]]:
                 }
             )
     return rows
+
+
+def _sum_closing_for_liquidity(
+    accounts: list[dict[str, Any]], liquidity_class: str
+) -> int:
+    """Sum closing balances for one liquidity bucket (integer cents only)."""
+    total = 0
+    for row in accounts:
+        if row["liquidity_class"] != liquidity_class:
+            continue
+        closing = row["closing_balance_cents"]
+        if not isinstance(closing, int):
+            raise TokenError(
+                f"closing_balance_cents must be int, got {type(closing).__name__}"
+            )
+        total += closing
+    return total
 
 
 def _render_overview_html() -> str:
@@ -102,14 +129,20 @@ def _render_overview_html() -> str:
         )
     if not accounts:
         return env.get_template("account_overview_empty.html").render()
-    total_closing = sum(int(row["closing_balance_cents"]) for row in accounts)
-    total_net_change = sum(int(row["net_change_cents"]) for row in accounts)
+    liquid_closing = _sum_closing_for_liquidity(accounts, LIQUIDITY_LIQUID)
+    brokerage_closing = _sum_closing_for_liquidity(accounts, LIQUIDITY_BROKERAGE)
+    liquid_net = sum(
+        int(row["net_change_cents"])
+        for row in accounts
+        if row["liquidity_class"] == LIQUIDITY_LIQUID
+    )
     last_row = max(accounts, key=lambda row: row["end_date"])
     return env.get_template("account_overview.html").render(
         accounts=accounts,
         account_count=len(accounts),
-        total_closing_cents=total_closing,
-        total_net_change_cents=total_net_change,
+        liquid_closing_cents=liquid_closing,
+        liquid_net_change_cents=liquid_net,
+        brokerage_closing_cents=brokerage_closing,
         ready_to_assign_cents=available,
         last_statement={
             "end_date": last_row["end_date"],
@@ -206,37 +239,49 @@ def _ledger_blocks_for_run(run_id: UUID) -> list[dict[str, Any]]:
                 continue
             _stmt, _summary, transactions = loaded
             holdings = get_statement_holdings(conn, statement.statement_id)
-            blocks.append(
-                {
-                    "institution": account.institution,
-                    "account_type": account.account_type.value,
-                    "account_mask": account.account_mask,
-                    "start_date": statement.statement_start_date.isoformat(),
-                    "end_date": statement.statement_end_date.isoformat(),
-                    "opening_balance_cents": statement.opening_balance_cents,
-                    "closing_balance_cents": statement.closing_balance_cents,
-                    "net_change_cents": statement.net_change_cents,
-                    "transactions": [
-                        {
-                            "post_date": txn.post_date.isoformat(),
-                            "category": txn.transaction_category.value,
-                            "description": txn.description,
-                            "amount_cents": txn.amount_cents,
-                        }
-                        for txn in transactions
-                    ],
-                    "holdings": [
-                        {
-                            "symbol": holding.symbol,
-                            "description": holding.description,
-                            "quantity_nanos": holding.quantity_nanos,
-                            "market_value_cents": holding.market_value_cents,
-                        }
-                        for holding in holdings
-                    ],
-                }
-            )
+            blocks.append(_ledger_block(account, statement, transactions, holdings))
     return blocks
+
+
+def _ledger_block(
+    account: Any,
+    statement: Any,
+    transactions: Any,
+    holdings: Any,
+) -> dict[str, Any]:
+    """Build one ledger card dict, including liquid vs non-liquid label."""
+    liq = liquidity_class_for_domain(account.account_domain)
+    return {
+        "institution": account.institution,
+        "account_type": account.account_type.value,
+        "account_domain": account.account_domain.value,
+        "liquidity_class": liq,
+        "liquidity_label": liquidity_label(liq),
+        "account_mask": account.account_mask,
+        "start_date": statement.statement_start_date.isoformat(),
+        "end_date": statement.statement_end_date.isoformat(),
+        "opening_balance_cents": statement.opening_balance_cents,
+        "closing_balance_cents": statement.closing_balance_cents,
+        "net_change_cents": statement.net_change_cents,
+        "transactions": [
+            {
+                "post_date": txn.post_date.isoformat(),
+                "category": txn.transaction_category.value,
+                "description": txn.description,
+                "amount_cents": txn.amount_cents,
+            }
+            for txn in transactions
+        ],
+        "holdings": [
+            {
+                "symbol": holding.symbol,
+                "description": holding.description,
+                "quantity_nanos": holding.quantity_nanos,
+                "market_value_cents": holding.market_value_cents,
+            }
+            for holding in holdings
+        ],
+    }
 
 
 def _ledger_blocks_recent(*, limit: int = 5) -> list[dict[str, Any]]:
@@ -250,36 +295,7 @@ def _ledger_blocks_recent(*, limit: int = 5) -> list[dict[str, Any]]:
                 continue
             _stmt, _summary, transactions = loaded
             holdings = get_statement_holdings(conn, statement.statement_id)
-            blocks.append(
-                {
-                    "institution": account.institution,
-                    "account_type": account.account_type.value,
-                    "account_mask": account.account_mask,
-                    "start_date": statement.statement_start_date.isoformat(),
-                    "end_date": statement.statement_end_date.isoformat(),
-                    "opening_balance_cents": statement.opening_balance_cents,
-                    "closing_balance_cents": statement.closing_balance_cents,
-                    "net_change_cents": statement.net_change_cents,
-                    "transactions": [
-                        {
-                            "post_date": txn.post_date.isoformat(),
-                            "category": txn.transaction_category.value,
-                            "description": txn.description,
-                            "amount_cents": txn.amount_cents,
-                        }
-                        for txn in transactions
-                    ],
-                    "holdings": [
-                        {
-                            "symbol": holding.symbol,
-                            "description": holding.description,
-                            "quantity_nanos": holding.quantity_nanos,
-                            "market_value_cents": holding.market_value_cents,
-                        }
-                        for holding in holdings
-                    ],
-                }
-            )
+            blocks.append(_ledger_block(account, statement, transactions, holdings))
     return blocks
 
 
@@ -535,34 +551,7 @@ async def get_statement_ledger(
                     status_code=status.HTTP_400_BAD_REQUEST,
                 )
             holdings = get_statement_holdings(conn, statement_id)
-            block = {
-                "institution": account.institution,
-                "account_type": account.account_type.value,
-                "account_mask": account.account_mask,
-                "start_date": statement.statement_start_date.isoformat(),
-                "end_date": statement.statement_end_date.isoformat(),
-                "opening_balance_cents": statement.opening_balance_cents,
-                "closing_balance_cents": statement.closing_balance_cents,
-                "net_change_cents": statement.net_change_cents,
-                "transactions": [
-                    {
-                        "post_date": txn.post_date.isoformat(),
-                        "category": txn.transaction_category.value,
-                        "description": txn.description,
-                        "amount_cents": txn.amount_cents,
-                    }
-                    for txn in transactions
-                ],
-                "holdings": [
-                    {
-                        "symbol": holding.symbol,
-                        "description": holding.description,
-                        "quantity_nanos": holding.quantity_nanos,
-                        "market_value_cents": holding.market_value_cents,
-                    }
-                    for holding in holdings
-                ],
-            }
+            block = _ledger_block(account, statement, transactions, holdings)
     except Exception as exc:  # noqa: BLE001
         logger.error(
             "Dashboard statement drill-in failed",

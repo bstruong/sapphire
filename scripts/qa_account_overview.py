@@ -49,10 +49,12 @@ def main() -> int:
     print("QA: Account overview home — load aggregates + transaction drill-in")
     failures = 0
 
-    if not os.environ.get("DATABASE_URL"):
-        os.environ["DATABASE_URL"] = (
+    # Destructive truncate — always use the isolated pytest DB, never dogfood.
+    if not os.environ.get("TEST_DATABASE_URL"):
+        os.environ["TEST_DATABASE_URL"] = (
             "postgresql://postgres:sapphire@localhost:54329/sapphire_test"
         )
+    os.environ["DATABASE_URL"] = os.environ["TEST_DATABASE_URL"]
 
     import psycopg
     from fastapi.testclient import TestClient
@@ -110,13 +112,17 @@ def main() -> int:
             dash.status_code == 200
             and "Account overview" in dash.text
             and "Accounts" in dash.text
+            and "Liquid cash" in dash.text
+            and "Brokerage funds" in dash.text
+            and "Liquid" in dash.text
+            and "Non-liquid" in dash.text
             and "SYNTHETIC Payroll" not in dash.text
             and re.search(r"\$\d[\d,]*\.\d{2}\b", dash.text)
             and not re.findall(r"\$\d[\d,]*\.\d{3,}", dash.text)
         ):
-            _pass("seeded DB → high-level USD overview on load (no txn dump)")
+            _pass("seeded DB → liquid vs brokerage USD overview on load (no txn dump)")
         else:
-            _fail("seeded overview missing USD formatting or still shows ledger home")
+            _fail("seeded overview missing liquidity split or still shows ledger home")
             failures += 1
 
         match = re.search(

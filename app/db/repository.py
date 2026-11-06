@@ -490,6 +490,75 @@ def get_raw_payload_by_sha256(
         )
 
 
+def get_canonical_ingest_by_sha256(
+    conn: psycopg.Connection, content_sha256: str
+) -> dict[str, object] | None:
+    """Return the latest successful ingest for a payload hash, if any.
+
+    Used to short-circuit re-uploads of the same PDF bytes so we do not create
+    duplicate statements for the same content.
+    """
+    query = """
+    SELECT
+        er.run_id,
+        er.raw_payload_id,
+        er.adapter_id,
+        er.adapter_version,
+        COUNT(DISTINCT s.statement_id) AS statements_count,
+        (
+            SELECT COUNT(*)
+            FROM transactions t
+            JOIN statements s2 ON s2.statement_id = t.statement_id
+            WHERE s2.run_id = er.run_id
+        ) AS transactions_count
+    FROM raw_payloads rp
+    JOIN extraction_runs er ON er.raw_payload_id = rp.raw_payload_id
+    LEFT JOIN statements s ON s.run_id = er.run_id
+    WHERE rp.content_sha256 = %s
+      AND er.status = %s
+    GROUP BY er.run_id, er.raw_payload_id, er.adapter_id, er.adapter_version, er.started_at
+    HAVING COUNT(DISTINCT s.statement_id) >= 1
+    ORDER BY er.started_at DESC
+    LIMIT 1;
+    """
+    accounts_query = """
+    SELECT DISTINCT
+        a.account_id, a.institution, a.account_mask,
+        a.account_domain, a.account_type, a.currency
+    FROM statements s
+    JOIN accounts a ON a.account_id = s.account_id
+    WHERE s.run_id = %s
+    ORDER BY a.institution, a.account_mask;
+    """
+    with conn.cursor() as cur:
+        cur.execute(query, (content_sha256, RunStatus.CANONICAL_PERSISTED.value))
+        row = cur.fetchone()
+        if not row:
+            return None
+        run_id = UUID(str(row[0]))
+        cur.execute(accounts_query, (str(run_id),))
+        accounts = [
+            (
+                UUID(str(a[0])),
+                str(a[1]),
+                str(a[2]),
+                str(a[3]),
+                str(a[4]),
+                str(a[5]),
+            )
+            for a in cur.fetchall()
+        ]
+        return {
+            "run_id": run_id,
+            "raw_payload_id": UUID(str(row[1])),
+            "adapter_id": str(row[2]),
+            "adapter_version": str(row[3]),
+            "statements_count": int(row[4]),
+            "transactions_count": int(row[5]),
+            "accounts": accounts,
+        }
+
+
 def get_extraction_run(conn: psycopg.Connection, run_id: UUID) -> ExtractionRun | None:
     """Retrieve extraction run by run_id."""
     query = """

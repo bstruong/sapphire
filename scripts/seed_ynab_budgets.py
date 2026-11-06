@@ -20,7 +20,7 @@ STARTER = (
 def main() -> int:
     if not os.environ.get("DATABASE_URL"):
         os.environ["DATABASE_URL"] = (
-            "postgresql://postgres:sapphire@localhost:54329/sapphire_test"
+            "postgresql://postgres:sapphire@localhost:54329/sapphire"
         )
 
     import psycopg

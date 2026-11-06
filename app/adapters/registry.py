@@ -19,6 +19,7 @@ from app.adapters.combined import StandardCombinedDepositoryAdapter
 from app.adapters.credit_card import StandardCreditCardAdapter
 from app.adapters.depository import StandardDepositoryAdapter
 from app.adapters.schwab import SchwabAdapter
+from app.adapters.schwab_checking import SchwabCheckingAdapter
 from app.adapters.vanguard import VanguardAdapter
 from app.models.exceptions import AdapterRegistryError
 
@@ -182,6 +183,7 @@ def get_default_registry() -> AdapterRegistry:
             ChaseDepositoryAdapter(),
             ChaseCreditCardAdapter(),
             StandardCreditCardAdapter(),
+            SchwabCheckingAdapter(),
             SchwabAdapter(),
             VanguardAdapter(),
             StandardCombinedDepositoryAdapter(),
