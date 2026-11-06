@@ -1,6 +1,6 @@
 # Pitch: CI reliability (un-crawl + Watchtower mutation)
 
-**Status:** Shaped  
+**Status:** Shipped  
 **Builder:** Cloud agent (Cloud-Build Mode)  
 **Bettor:** Human PM  
 **Appetite:** Small Batch (2 weeks)
@@ -89,16 +89,16 @@ Manual UI QA: not applicable (no user-visible UI). Ops breadboard is the mermaid
 
 ## Done-when
 
-- [ ] Pitch + Project item Lane=Shaped (separate from History charts)
-- [ ] Docs-only PR completes without Playwright install / full E2E wall
-- [ ] App PR CI uses cached Playwright; healthy run clearly under prior ~4 min cold-install tax
-- [ ] Watchtower runner online; mutation `workflow_dispatch` green on `[self-hosted, watchtower]`
+- [x] Pitch + Project item Lane=Shaped (separate from History charts)
+- [x] Docs-only PR completes without Playwright install / full E2E wall
+- [x] App PR CI uses cached Playwright; healthy run clearly under prior ~4 min cold-install tax
+- [x] Watchtower runner online; mutation `workflow_dispatch` green on `[self-hosted, watchtower]`
 - [x] Path-filtered diff mutation on self-hosted; weekly full cron **dropped**; dispatch `full_allowlist` opt-in; `AGENTS.md` + workflow match
-- [ ] Executable QA: `uv run python scripts/qa_ci_reliability.py` prints `[PASS]` / `[FAIL]` for happy and negative policy cases
-- [ ] Manual UI QA: not applicable (no user-visible UI)
-- [ ] Core invariants held where touched (financial modules still killable; no PII/amount logging)
-- [ ] CI gates: `uv run ruff check .`, `uv run ruff format --check .`, `uv run pytest --cov=app --cov-fail-under=90 -v` (on app-touching PRs; docs path may slim)
-- [ ] GitHub Project board updated (Lane=Shipped / Circuit-broken / Raw); `ARCH_PLAN.md` pointer stays accurate
+- [x] Executable QA: `uv run python scripts/qa_ci_reliability.py` prints `[PASS]` / `[FAIL]` for happy and negative policy cases
+- [x] Manual UI QA: not applicable (no user-visible UI)
+- [x] Core invariants held where touched (financial modules still killable; no PII/amount logging)
+- [x] CI gates: `uv run ruff check .`, `uv run ruff format --check .`, `uv run pytest --cov=app --cov-fail-under=90 -v` (on app-touching PRs; docs path may slim)
+- [ ] GitHub Project board updated (Lane=Shipped / Circuit-broken / Raw); `ARCH_PLAN.md` pointer stays accurate — migrate script seeds Lane=Shipped; owner must `gh auth refresh -s project,read:project` then re-run migrate (no dedicated PAT)
 
 ## Circuit breaker
 

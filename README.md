@@ -32,7 +32,7 @@ Two different “local model” questions — keep them separate:
 - **TDD & coverage:** `uv run pytest --cov=app --cov-fail-under=90 -v` (≥90%).
 - **Mutation (Watchtower on main):** Path-filtered diff / critical-only via `.github/workflows/mutation-nightly.yml`—not a PR blocker; full allowlist is rare/opt-in.
 
-Planning uses Shape Up (`ARCH_PLAN.md`, `docs/specs/`). User-visible pitches must include shaping-phase wireframes under `docs/specs/visuals/`.
+Planning uses Shape Up (`ARCH_PLAN.md`, `docs/specs/`). User-visible pitches must include shaping-phase wireframes under `docs/specs/visuals/`. Board sync: owner runs `gh auth refresh -s project,read:project` then `bash scripts/migrate_shape_up_github_project.sh` (no dedicated agent PAT).
 
 ## Quick Start & Verification
 
