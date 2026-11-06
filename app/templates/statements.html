@@ -1,0 +1,70 @@
+<section class="view" id="statements-pane" data-nav="statements">
+    <header class="page-head">
+        <h1>Statements</h1>
+        <p>Upload and validate PDFs locally</p>
+    </header>
+
+    <form id="upload-form" class="card drop"
+          hx-post="/api/v1/dashboard/upload"
+          hx-encoding="multipart/form-data"
+          hx-swap="innerHTML"
+          hx-target="#pane-vault-body"
+          hx-indicator="#pane-vault-body">
+        <h2>Statement upload</h2>
+        <p class="muted">Upload Chase or Schwab statement PDFs. Every upload is validated before it is saved.</p>
+        <label class="dropzone" id="upload-dropzone" for="statement-file">
+            <svg class="icon"><use href="#i-upload"/></svg>
+            <span class="strong">Drop a PDF here or click to choose</span>
+            <span class="sub">PDF only &middot; parsed on this Vault</span>
+            <input type="file" id="statement-file" name="file" class="input-file-hidden"
+                   accept="application/pdf,.pdf" required>
+        </label>
+        <span class="lock-note"><svg class="icon"><use href="#i-lock"/></svg>Parsed locally &mdash; raw statements never leave the Vault</span>
+        <div>
+            <button type="submit" id="upload-btn" class="btn btn-primary"><svg class="icon"><use href="#i-upload"/></svg>Upload to Vault</button>
+        </div>
+    </form>
+
+    <div class="card">
+        <div class="card-head">
+            <div>
+                <h2>Recent statements</h2>
+                <p>Select a row to open its transactions.</p>
+            </div>
+        </div>
+        {% if statements %}
+        <div class="card-flush table-scroll">
+            <table class="table" id="statements-recent">
+                <thead>
+                    <tr>
+                        <th>Account</th>
+                        <th class="period">Period</th>
+                        <th class="amount">Transactions</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in statements %}
+                    <tr>
+                        <td>
+                            <span class="strong">{{ row.institution }}</span>
+                            <span class="sub">{{ row.account_type | human_label }} &middot; {{ row.account_mask }}</span>
+                        </td>
+                        <td class="period muted">{{ row.start_date }} &rarr; {{ row.end_date }}</td>
+                        <td class="amount num">{{ row.transaction_count }}</td>
+                        <td class="amount">
+                            <button type="button" class="btn btn-ghost btn-sm"
+                                    hx-get="/api/v1/dashboard/statements/{{ row.statement_id }}"
+                                    hx-target="#pane-vault-body"
+                                    hx-swap="innerHTML">Open</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-inline">No statements yet &mdash; your uploads will show up here.</div>
+        {% endif %}
+    </div>
+</section>

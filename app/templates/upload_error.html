@@ -1,6 +1,20 @@
-<div class="analysis-result ledger-result">
-    <h3>Upload rejected</h3>
-    <p><strong>Status:</strong> <span class="status-badge status-err">failed</span></p>
-    <p><strong>Error:</strong> {{ error_code }}</p>
-    <p style="margin-top:12px;color:#8b949e;font-size:0.85rem;">{{ detail }}</p>
-</div>
+<section class="view ledger-result">
+    <div class="alert" role="alert">
+        <svg class="icon"><use href="#i-alert"/></svg>
+        <div>
+            <h4>Request rejected</h4>
+            <p>Error <code>{{ error_code }}</code> &mdash; {{ detail }}</p>
+            <p class="muted">Nothing was saved.</p>
+            <div class="alert-actions">
+                <button type="button" class="btn btn-ghost btn-sm"
+                        hx-get="/api/v1/dashboard/statements"
+                        hx-target="#pane-vault-body"
+                        hx-swap="innerHTML">Back to statements</button>
+                <button type="button" class="btn btn-ghost btn-sm"
+                        hx-get="/api/v1/dashboard/overview"
+                        hx-target="#pane-vault-body"
+                        hx-swap="innerHTML">Overview</button>
+            </div>
+        </div>
+    </div>
+</section>

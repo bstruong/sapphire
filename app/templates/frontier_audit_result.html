@@ -1,33 +1,17 @@
-<div class="analysis-result" id="frontier-audit-result">
-    <h3>Frontier aggregate audit</h3>
-    <p><strong>Group:</strong> {{ group_by }}</p>
-    <p><strong>Status:</strong> <span class="status-badge status-ok">Completed</span></p>
-    <p>Totals stored as integer cents; shown as USD.</p>
-    <table class="data-table">
-        <thead>
-            <tr>
-                <th>Metric</th>
-                <th class="amount">Amount</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td>Transactions</td>
-                <td class="amount">{{ totals.total_transactions }}</td>
-            </tr>
-            <tr>
-                <td>Deposits</td>
-                <td class="amount">{{ totals.total_deposits_cents | usd_cents }}</td>
-            </tr>
-            <tr>
-                <td>Purchases</td>
-                <td class="amount">{{ totals.total_purchases_cents | usd_cents }}</td>
-            </tr>
-            <tr>
-                <td>Withdrawals</td>
-                <td class="amount">{{ totals.total_withdrawals_cents | usd_cents }}</td>
-            </tr>
-        </tbody>
-    </table>
+<div class="card" id="frontier-audit-result">
+    <div class="card-head">
+        <div>
+            <h2>Frontier aggregate audit</h2>
+            <p>Grouped by {{ group_by }}. Totals stored as integer cents; shown as USD.</p>
+        </div>
+        <span class="chip chip-pos">Completed</span>
+    </div>
+    <div class="card-body">
+        <div class="audit-result">
+            <div class="stat"><div class="eyebrow">Transactions</div><div class="v num">{{ totals.total_transactions }}</div></div>
+            <div class="stat"><div class="eyebrow">Deposits</div><div class="v num">{{ totals.total_deposits_cents | usd_cents }}</div></div>
+            <div class="stat"><div class="eyebrow">Purchases</div><div class="v num">{{ totals.total_purchases_cents | usd_cents }}</div></div>
+            <div class="stat"><div class="eyebrow">Withdrawals</div><div class="v num">{{ totals.total_withdrawals_cents | usd_cents }}</div></div>
+        </div>
+    </div>
 </div>
-

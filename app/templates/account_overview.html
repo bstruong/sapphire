@@ -1,54 +1,74 @@
-<div class="analysis-result account-overview" id="account-overview">
-    <h3>Account overview</h3>
-    <p><strong>Status:</strong> <span class="status-badge status-ok">from Vault</span></p>
-    <p style="margin-top:12px;color:#8b949e;font-size:0.85rem;">
-        High-level balances from Postgres (stored as integer cents, shown as USD). Transactions are under Details.
-    </p>
-    <div style="margin-top:12px;display:flex;gap:1.5rem;flex-wrap:wrap;font-size:0.85rem;">
-        <div>
-            <span style="color:#8b949e;text-transform:uppercase;font-size:0.7rem;">Accounts</span>
-            <div>{{ account_count }}</div>
+<section class="view" id="account-overview" data-nav="overview">
+    <header class="page-head">
+        <h1>Account overview</h1>
+        <p>Balances from your latest statements</p>
+    </header>
+
+    <div class="kpis">
+        <div class="card hero">
+            <div class="eyebrow">Total closing balance</div>
+            <div class="value num">{{ total_closing_cents | usd_cents }}</div>
+            <div class="meta">
+                <span class="chip {{ 'chip-pos' if total_net_change_cents >= 0 else 'chip-neg' }} num">{{ '+' if total_net_change_cents >= 0 else '' }}{{ total_net_change_cents | usd_cents }}</span>
+                <span>net this period &middot; {{ account_count }} account{{ '' if account_count == 1 else 's' }}</span>
+            </div>
         </div>
-        <div>
-            <span style="color:#8b949e;text-transform:uppercase;font-size:0.7rem;">Total closing</span>
-            <div class="amount">{{ total_closing_cents | usd_cents }}</div>
+        <div class="card kpi">
+            <div class="eyebrow">Ready to Assign</div>
+            <div class="value num">{{ ready_to_assign_cents | usd_cents }}</div>
+            <div class="foot">
+                <span>Unbudgeted dollars</span>
+                <button type="button" class="btn-link"
+                        hx-get="/api/v1/dashboard/budget"
+                        hx-target="#pane-vault-body"
+                        hx-swap="innerHTML">Assign &rarr;</button>
+            </div>
+        </div>
+        <div class="card kpi">
+            <div class="eyebrow">Last statement</div>
+            <div class="value">{{ last_statement.end_date }}</div>
+            <div class="foot">
+                <span>{{ last_statement.institution }} {{ last_statement.account_mask }}</span>
+                <span class="chip chip-accent">Stored</span>
+            </div>
         </div>
     </div>
-    <div class="table-scroll" style="margin-top:16px;">
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>Institution</th>
-                    <th>Type</th>
-                    <th>Mask</th>
-                    <th class="period">Period</th>
-                    <th class="amount">Opening</th>
-                    <th class="amount">Closing</th>
-                    <th class="amount">Net</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for row in accounts %}
-                <tr>
-                    <td>{{ row.institution }}</td>
-                    <td>{{ row.account_type | human_label }}</td>
-                    <td>{{ row.account_mask }}</td>
-                    <td class="period">{{ row.start_date }} → {{ row.end_date }}</td>
-                    <td class="amount">{{ row.opening_balance_cents | usd_cents }}</td>
-                    <td class="amount">{{ row.closing_balance_cents | usd_cents }}</td>
-                    <td class="amount">{{ row.net_change_cents | usd_cents }}</td>
-                    <td>
-                        <button type="button"
-                                class="secondary"
-                                style="padding:4px 10px;font-size:0.75rem;"
-                                hx-get="/api/v1/dashboard/statements/{{ row.statement_id }}"
-                                hx-target="#pane-vault-body"
-                                hx-swap="innerHTML">Details</button>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+
+    <div class="card">
+        <div class="card-head">
+            <div>
+                <h2>Accounts</h2>
+                <p>Opening to closing per statement period. Select a row for transactions.</p>
+            </div>
+            <span class="chip chip-neutral">{{ account_count }} account{{ '' if account_count == 1 else 's' }}</span>
+        </div>
+        <div class="list-head">
+            <span></span><span>Account</span><span class="hide-sm">Period</span>
+            <span class="amount-col hide-sm">Opening</span><span class="amount-col">Closing</span><span></span>
+        </div>
+        <ul class="list">
+            {% for row in accounts %}
+            <li>
+                <button type="button" class="list-row"
+                        hx-get="/api/v1/dashboard/statements/{{ row.statement_id }}"
+                        hx-target="#pane-vault-body"
+                        hx-swap="innerHTML"
+                        hx-indicator="#pane-vault-body">
+                    <span class="avatar av-{{ row.institution | lower }}">{{ row.institution[:1] }}</span>
+                    <span>
+                        <span class="strong">{{ row.institution }}</span>
+                        <span class="sub">{{ row.account_type | human_label }} &middot; {{ row.account_mask }}</span>
+                    </span>
+                    <span class="sub hide-sm"><span class="period">{{ row.start_date }} &rarr; {{ row.end_date }}</span></span>
+                    <span class="amount-col muted num hide-sm">{{ row.opening_balance_cents | usd_cents }}</span>
+                    <span class="amount-col">
+                        <span class="strong num">{{ row.closing_balance_cents | usd_cents }}</span>
+                        <span class="chip {{ 'chip-pos' if row.net_change_cents >= 0 else 'chip-neg' }} num">{{ '+' if row.net_change_cents >= 0 else '' }}{{ row.net_change_cents | usd_cents }}</span>
+                    </span>
+                    <svg class="chev"><use href="#i-chev"/></svg>
+                </button>
+            </li>
+            {% endfor %}
+        </ul>
     </div>
-</div>
+</section>

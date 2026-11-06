@@ -1,7 +1,17 @@
-<div class="analysis-result account-overview" id="account-overview">
-    <h3>Account overview</h3>
-    <p><strong>Status:</strong> <span class="status-badge status-warn">empty</span></p>
-    <p style="margin-top:12px;color:#8b949e;font-size:0.85rem;">
-        No persisted statements yet. Upload a Chase or Schwab PDF to the Vault.
-    </p>
-</div>
+<section class="view" id="account-overview" data-nav="overview">
+    <header class="page-head">
+        <h1>Account overview</h1>
+        <p>Balances from your latest statements</p>
+    </header>
+    <div class="card">
+        <div class="empty">
+            <div class="empty-art"><svg class="icon"><use href="#i-doc"/></svg></div>
+            <h2>No persisted statements yet</h2>
+            <p>Upload a Chase or Schwab PDF. It is parsed on this machine and your balances appear here.</p>
+            <button type="button" class="btn btn-primary"
+                    hx-get="/api/v1/dashboard/statements"
+                    hx-target="#pane-vault-body"
+                    hx-swap="innerHTML"><svg class="icon"><use href="#i-upload"/></svg>Upload your first statement</button>
+        </div>
+    </div>
+</section>

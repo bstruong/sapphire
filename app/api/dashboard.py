@@ -89,6 +89,8 @@ def _render_overview_html() -> str:
     """Templated account overview or empty state (never fake zero portfolio)."""
     try:
         accounts = _overview_accounts()
+        with get_db_connection() as conn:
+            available = ready_to_assign_cents(conn)
     except Exception as exc:  # noqa: BLE001
         logger.error(
             "Dashboard overview query failed",
@@ -101,15 +103,30 @@ def _render_overview_html() -> str:
     if not accounts:
         return env.get_template("account_overview_empty.html").render()
     total_closing = sum(int(row["closing_balance_cents"]) for row in accounts)
+    total_net_change = sum(int(row["net_change_cents"]) for row in accounts)
+    last_row = max(accounts, key=lambda row: row["end_date"])
     return env.get_template("account_overview.html").render(
         accounts=accounts,
         account_count=len(accounts),
         total_closing_cents=total_closing,
+        total_net_change_cents=total_net_change,
+        ready_to_assign_cents=available,
+        last_statement={
+            "end_date": last_row["end_date"],
+            "institution": last_row["institution"],
+            "account_mask": last_row["account_mask"],
+        },
     )
 
 
-def _render_budget_html() -> str:
-    """Templated Budget pane: Ready to Assign + envelopes (integer cents → USD)."""
+def _render_budget_html(
+    *, error_code: str | None = None, error_detail: str | None = None
+) -> str:
+    """Templated Budget view: Ready to Assign, assign form, envelopes.
+
+    Integer cents are rendered as USD. When ``error_code`` is given the view is
+    rendered with an inline alert so the forms stay available for a retry.
+    """
     try:
         with get_db_connection() as conn:
             available = ready_to_assign_cents(conn)
@@ -133,26 +150,49 @@ def _render_budget_html() -> str:
             }
             for item in envelopes
         ],
+        error_code=error_code,
+        error_detail=error_detail,
     )
 
 
-def _render_dashboard() -> str:
-    """Render the main dashboard HTML with Pane 2 prepopulated from Vault."""
-    assign_options: list[dict[str, str]] = []
+def _statement_rows(*, limit: int = 10) -> list[dict[str, Any]]:
+    """Newest statements (header fields and row counts only, no transactions)."""
+    with get_db_connection() as conn:
+        recent = list_recent_statements(conn, limit=limit)
+    return [
+        {
+            "statement_id": str(statement.statement_id),
+            "institution": account.institution,
+            "account_type": account.account_type.value,
+            "account_mask": account.account_mask,
+            "start_date": statement.statement_start_date.isoformat(),
+            "end_date": statement.statement_end_date.isoformat(),
+            "transaction_count": txn_count,
+        }
+        for account, statement, txn_count in recent
+    ]
+
+
+def _render_statements_html() -> str:
+    """Statements view: upload form plus recent statements."""
     try:
-        with get_db_connection() as conn:
-            assign_options = [
-                {"envelope_id": str(item.envelope_id), "name": item.name}
-                for item in list_envelopes(conn)
-            ]
+        rows = _statement_rows()
     except Exception as exc:  # noqa: BLE001
         logger.error(
-            "Dashboard envelope list for assign form failed",
+            "Dashboard statements query failed",
             extra={"error_type": type(exc).__name__},
         )
+        return env.get_template("upload_error.html").render(
+            error_code="STATEMENTS_QUERY_FAILED",
+            detail="Could not load recent statements from the Vault database.",
+        )
+    return env.get_template("statements.html").render(statements=rows)
+
+
+def _render_dashboard() -> str:
+    """Render the dashboard shell with the main pane prepopulated from Vault."""
     return env.get_template("dashboard.html").render(
         vault_pane_html=_render_overview_html(),
-        assign_envelopes=assign_options,
     )
 
 
@@ -175,6 +215,7 @@ def _ledger_blocks_for_run(run_id: UUID) -> list[dict[str, Any]]:
                     "end_date": statement.statement_end_date.isoformat(),
                     "opening_balance_cents": statement.opening_balance_cents,
                     "closing_balance_cents": statement.closing_balance_cents,
+                    "net_change_cents": statement.net_change_cents,
                     "transactions": [
                         {
                             "post_date": txn.post_date.isoformat(),
@@ -218,6 +259,7 @@ def _ledger_blocks_recent(*, limit: int = 5) -> list[dict[str, Any]]:
                     "end_date": statement.statement_end_date.isoformat(),
                     "opening_balance_cents": statement.opening_balance_cents,
                     "closing_balance_cents": statement.closing_balance_cents,
+                    "net_change_cents": statement.net_change_cents,
                     "transactions": [
                         {
                             "post_date": txn.post_date.isoformat(),
@@ -335,9 +377,9 @@ async def post_budget_assign(
             extra={"error_type": type(exc).__name__},
         )
         return HTMLResponse(
-            content=env.get_template("upload_error.html").render(
+            content=_render_budget_html(
                 error_code="INVALID_AMOUNT",
-                detail="Amount must be positive USD (e.g. 50 or 50.00).",
+                error_detail="Amount must be positive USD (e.g. 50 or 50.00).",
             ),
             status_code=status.HTTP_400_BAD_REQUEST,
         )
@@ -355,9 +397,9 @@ async def post_budget_assign(
             extra={"envelope_id": str(parsed_id)},
         )
         return HTMLResponse(
-            content=env.get_template("upload_error.html").render(
+            content=_render_budget_html(
                 error_code="ASSIGN_EXCEEDS_AVAILABLE",
-                detail="Assign amount exceeds Ready to Assign. No silent clamp.",
+                error_detail="Assign amount exceeds Ready to Assign. No silent clamp.",
             ),
             status_code=status.HTTP_400_BAD_REQUEST,
         )
@@ -368,10 +410,7 @@ async def post_budget_assign(
             else "INVALID_AMOUNT"
         )
         return HTMLResponse(
-            content=env.get_template("upload_error.html").render(
-                error_code=code,
-                detail=str(exc),
-            ),
+            content=_render_budget_html(error_code=code, error_detail=str(exc)),
             status_code=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -399,13 +438,53 @@ async def post_budget_envelope(
             create_envelope(conn, name=name)
     except TokenError as exc:
         return HTMLResponse(
-            content=env.get_template("upload_error.html").render(
+            content=_render_budget_html(
                 error_code="INVALID_ENVELOPE_NAME",
-                detail=str(exc),
+                error_detail=str(exc),
             ),
             status_code=status.HTTP_400_BAD_REQUEST,
         )
     return HTMLResponse(content=_render_budget_html())
+
+
+@dashboard_api.get(
+    "/statements",
+    response_class=HTMLResponse,
+    responses={400: {"description": "Requires HTMX or statements query failed"}},
+)
+async def get_statements(request: Request) -> HTMLResponse:
+    """Return the Statements view (upload form + recent statements)."""
+    hx_request = request.headers.get("HX-Request", "").lower()
+    if hx_request != "true":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This endpoint requires an HTMX request (HX-Request: true).",
+        )
+    logger.info("Dashboard statements view requested", extra={"surface": "statements"})
+    html = _render_statements_html()
+    status_code = (
+        status.HTTP_400_BAD_REQUEST
+        if "STATEMENTS_QUERY_FAILED" in html
+        else status.HTTP_200_OK
+    )
+    return HTMLResponse(content=html, status_code=status_code)
+
+
+@dashboard_api.get(
+    "/audit",
+    response_class=HTMLResponse,
+    responses={400: {"description": "Requires HTMX request"}},
+)
+async def get_audit(request: Request) -> HTMLResponse:
+    """Return the Audit view (ledger refresh + frontier verification forms)."""
+    hx_request = request.headers.get("HX-Request", "").lower()
+    if hx_request != "true":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This endpoint requires an HTMX request (HX-Request: true).",
+        )
+    logger.info("Dashboard audit view requested", extra={"surface": "audit"})
+    return HTMLResponse(content=env.get_template("audit.html").render())
 
 
 @dashboard_api.get(
@@ -464,6 +543,7 @@ async def get_statement_ledger(
                 "end_date": statement.statement_end_date.isoformat(),
                 "opening_balance_cents": statement.opening_balance_cents,
                 "closing_balance_cents": statement.closing_balance_cents,
+                "net_change_cents": statement.net_change_cents,
                 "transactions": [
                     {
                         "post_date": txn.post_date.isoformat(),
@@ -662,10 +742,15 @@ async def get_status(request: Request) -> HTMLResponse:
     return HTMLResponse(content=env.get_template("status.html").render())
 
 
-def _frontier_audit_error(detail: str) -> HTMLResponse:
+def _frontier_audit_error(
+    detail: str, *, error_code: str = "INVALID_GROUP_BY"
+) -> HTMLResponse:
     """Return the rejected frontier fragment with HTTP 400."""
     return HTMLResponse(
-        content=env.get_template("frontier_audit_error.html").render(detail=detail),
+        content=env.get_template("frontier_audit_error.html").render(
+            detail=detail,
+            error_code=error_code,
+        ),
         status_code=status.HTTP_400_BAD_REQUEST,
     )
 
@@ -709,7 +794,7 @@ async def frontier_audit(
             "Dashboard frontier audit rejected",
             extra={"group_by": stripped, "error_type": type(exc).__name__},
         )
-        return _frontier_audit_error(str(exc))
+        return _frontier_audit_error(str(exc), error_code="CLOUD_TOOL_ERROR")
 
     totals = summary["totals"]
     return HTMLResponse(

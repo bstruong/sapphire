@@ -187,6 +187,7 @@ add_item "Spec & design truthfulness" "Shipped." "Shipped" "n/a" ""
 add_item "Single Vault + shaping wireframes" "Shipped." "Shipped" "n/a" ""
 add_item "Statements in the browser (Chase + Schwab)" "Shipped — PR #49." "Shipped" "Small Batch" "docs/specs/pitch_statements_in_browser.md"
 add_item "Account overview home (YNAB-useful)" "Shipped — PR #50. USD overview on load + Details drill-in." "Shipped" "Small Batch" "docs/specs/pitch_account_overview.md"
+add_item "Dashboard refresh (Modern UI/UX)" "In-bet. Single nav sidebar, prefers-color-scheme + toggle, KPI cards, zero remote assets. Mark Shipped on merge." "In-bet" "Small Batch" "docs/specs/pitch_dashboard_refresh.md"
 
 # Raw backlog
 add_item "Additional institution adapters" "Beyond Chase/Schwab fixtures." "Raw" "n/a" ""

@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<!--
+  SAPPHIRE — Dashboard refresh (PROPOSED design mockup)
+  Pitch: docs/specs/pitch_dashboard_refresh.md
+  Baseline: app/templates/dashboard.html (dual pane, duplicated tab rows)
+
+  - Self-contained: no external fonts, scripts, or CDN assets (no SRI needed).
+  - Synthetic data only (SYNTHETIC labels, *0000 masks).
+  - The small script at the bottom only drives the mockup review bar
+    (view / state / theme switching). The shipped build uses HTMX swaps.
+-->
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SAPPHIRE — Dashboard refresh (proposed)</title>
+  <style>
+    /* ---------- Design tokens ---------- */
+    :root {
+      --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+      --radius-lg: 16px;
+      --radius: 12px;
+      --radius-sm: 8px;
+      --sidebar: 240px;
+      --ease: cubic-bezier(.2, .7, .2, 1);
+    }
+    [data-theme="dark"] {
+      --bg: #0a0d14;
+      --surface: #11151f;
+      --surface-2: #161b27;
+      --border: #222a3a;
+      --border-soft: #1a2030;
+      --text: #e6e9f2;
+      --text-2: #9aa3b8;
+      --text-3: #5f6880;
+      --accent: #5b8cff;
+      --accent-2: #8fb0ff;
+      --accent-soft: rgba(91, 140, 255, .12);
+      --pos: #3ddc97;
+      --pos-soft: rgba(61, 220, 151, .12);
+      --neg: #ff6b7a;
+      --neg-soft: rgba(255, 107, 122, .12);
+      --warn: #f5b84a;
+      --shadow: 0 1px 0 rgba(255,255,255,.03) inset, 0 8px 24px rgba(0,0,0,.25);
+      --hero: radial-gradient(120% 140% at 0% 0%, #1d3a8a 0%, #13224f 45%, #11151f 100%);
+    }
+    [data-theme="light"] {
+      --bg: #f6f7fb;
+      --surface: #ffffff;
+      --surface-2: #f1f3f9;
+      --border: #e3e7f0;
+      --border-soft: #edf0f6;
+      --text: #0f1525;
+      --text-2: #586179;
+      --text-3: #98a0b3;
+      --accent: #2f5bea;
+      --accent-2: #2f5bea;
+      --accent-soft: rgba(47, 91, 234, .08);
+      --pos: #0f9d63;
+      --pos-soft: rgba(15, 157, 99, .10);
+      --neg: #d93a4c;
+      --neg-soft: rgba(217, 58, 76, .08);
+      --warn: #b7791f;
+      --shadow: 0 1px 2px rgba(15,21,37,.04), 0 8px 24px rgba(15,21,37,.06);
+      --hero: radial-gradient(120% 140% at 0% 0%, #dfe8ff 0%, #eef2ff 50%, #ffffff 100%);
+    }
+
+    /* ---------- Base ---------- */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      transition: background .25s var(--ease), color .25s var(--ease);
+    }
+    .num { font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+    .muted { color: var(--text-2); }
+    .faint { color: var(--text-3); }
+    a { color: var(--accent-2); text-decoration: none; }
+    button, input, select { font: inherit; color: inherit; }
+
+    /* ---------- Shell ---------- */
+    .app { display: grid; grid-template-columns: var(--sidebar) 1fr; min-height: 100vh; }
+
+    .sidebar {
+      position: sticky; top: 0; height: 100vh;
+      display: flex; flex-direction: column; gap: 24px;
+      padding: 20px 14px;
+      border-right: 1px solid var(--border-soft);
+      background: var(--bg);
+    }
+    .brand { display: flex; align-items: center; gap: 10px; padding: 4px 10px; }
+    .brand-mark {
+      width: 28px; height: 28px; border-radius: 8px;
+      display: grid; place-items: center;
+      background: linear-gradient(135deg, #7aa2ff, #3a5bd9 60%, #1f2f86);
+      box-shadow: 0 4px 14px rgba(91,140,255,.35);
+    }
+    .brand-name { font-weight: 650; letter-spacing: .14em; font-size: 13px; }
+
+    .nav { display: flex; flex-direction: column; gap: 2px; }
+    .nav-label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-3); padding: 0 12px 6px; }
+    .nav button {
+      display: flex; align-items: center; gap: 10px;
+      width: 100%; padding: 9px 12px; border: 0; border-radius: var(--radius-sm);
+      background: transparent; color: var(--text-2); cursor: pointer; text-align: left;
+      transition: background .15s var(--ease), color .15s var(--ease);
+    }
+    .nav button:hover { background: var(--surface-2); color: var(--text); }
+    .nav button[aria-current="page"] { background: var(--accent-soft); color: var(--text); }
+    .nav button[aria-current="page"] svg { color: var(--accent-2); }
+    .nav svg { width: 18px; height: 18px; flex: none; }
+    .nav .count { margin-left: auto; font-size: 11px; color: var(--text-3); }
+
+    .vault-card {
+      margin-top: auto;
+      padding: 14px; border-radius: var(--radius);
+      background: var(--surface); border: 1px solid var(--border-soft);
+      font-size: 12px;
+    }
+    .vault-card .row { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--pos); box-shadow: 0 0 0 4px var(--pos-soft); }
+    .vault-card ul { list-style: none; margin-top: 10px; display: grid; gap: 6px; color: var(--text-2); }
+    .vault-card li { display: flex; justify-content: space-between; }
+    .vault-card li span:last-child { color: var(--text); }
+
+    .main { min-width: 0; }
+    .topbar {
+      position: sticky; top: 0; z-index: 5;
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      padding: 18px 36px;
+      background: color-mix(in srgb, var(--bg) 82%, transparent);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .topbar h1 { font-size: 20px; font-weight: 650; letter-spacing: -.01em; }
+    .topbar p { font-size: 13px; color: var(--text-2); margin-top: 2px; }
+    .content { padding: 28px 36px 120px; max-width: 1180px; display: grid; gap: 20px; }
+
+    /* ---------- Primitives ---------- */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      height: 38px; padding: 0 16px; border-radius: 10px; border: 1px solid transparent;
+      font-weight: 550; font-size: 13.5px; cursor: pointer; white-space: nowrap;
+      transition: transform .12s var(--ease), background .15s var(--ease), border-color .15s var(--ease);
+    }
+    .btn:active { transform: translateY(1px); }
+    .btn svg { width: 16px; height: 16px; }
+    .btn-primary { background: var(--accent); color: #fff; box-shadow: 0 6px 18px -6px var(--accent); }
+    .btn-primary:hover { filter: brightness(1.08); }
+    .btn-ghost { background: var(--surface); border-color: var(--border); color: var(--text); }
+    .btn-ghost:hover { border-color: var(--accent); }
+    .btn-sm { height: 30px; padding: 0 12px; font-size: 12.5px; border-radius: 8px; }
+    .btn-link { background: none; border: 0; color: var(--accent-2); padding: 0; height: auto; font-weight: 550; }
+
+    .card {
+      background: var(--surface); border: 1px solid var(--border-soft);
+      border-radius: var(--radius-lg); box-shadow: var(--shadow);
+    }
+    .card-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 18px 22px 0;
+    }
+    .card-head h2 { font-size: 15px; font-weight: 620; }
+    .card-head p { font-size: 12.5px; color: var(--text-2); margin-top: 2px; }
+    .card-body { padding: 16px 22px 22px; }
+
+    .eyebrow { font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-2); font-weight: 550; }
+
+    .chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600;
+    }
+    .chip-pos { color: var(--pos); background: var(--pos-soft); }
+    .chip-neg { color: var(--neg); background: var(--neg-soft); }
+    .chip-neutral { color: var(--text-2); background: var(--surface-2); }
+    .chip-accent { color: var(--accent-2); background: var(--accent-soft); }
+
+    .field { display: grid; gap: 6px; }
+    .field label { font-size: 12.5px; color: var(--text-2); font-weight: 520; }
+    .input, .select {
+      height: 40px; width: 100%; padding: 0 12px;
+      background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+      outline: none; transition: border-color .15s var(--ease), box-shadow .15s var(--ease);
+    }
+    .input:focus, .select:focus { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+    .input-prefix { position: relative; }
+    .input-prefix span { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-3); }
+    .input-prefix .input { padding-left: 26px; }
+
+    /* ---------- KPI row ---------- */
+    .kpis { display: grid; grid-template-columns: 1.6fr 1fr 1fr; gap: 20px; }
+    .hero { background: var(--hero); padding: 24px; position: relative; overflow: hidden; }
+    .hero::after {
+      content: ""; position: absolute; right: -60px; top: -60px; width: 220px; height: 220px;
+      border-radius: 50%; background: radial-gradient(circle, rgba(143,176,255,.25), transparent 70%);
+    }
+    .hero .value { font-size: 40px; font-weight: 680; letter-spacing: -.03em; margin: 10px 0 6px; }
+    .hero .value .cents { font-size: 22px; color: var(--text-2); font-weight: 600; }
+    .hero .meta { display: flex; gap: 10px; align-items: center; color: var(--text-2); font-size: 13px; }
+    .kpi { padding: 22px; display: flex; flex-direction: column; }
+    .kpi .value { font-size: 26px; font-weight: 650; letter-spacing: -.02em; margin: 10px 0 4px; }
+    .kpi .foot { margin-top: auto; padding-top: 12px; font-size: 12.5px; color: var(--text-2); display: flex; justify-content: space-between; align-items: center; }
+
+    /* ---------- Account list ---------- */
+    .list { list-style: none; }
+    .list-row {
+      display: grid; grid-template-columns: 40px 1.4fr 1.2fr 1fr 140px 20px;
+      align-items: center; gap: 16px;
+      padding: 14px 22px; border-top: 1px solid var(--border-soft);
+      cursor: pointer; transition: background .15s var(--ease);
+    }
+    .list-row:hover { background: var(--surface-2); }
+    .list-row:hover .chev { color: var(--text); transform: translateX(2px); }
+    .avatar {
+      width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center;
+      font-weight: 700; font-size: 14px; color: #fff;
+    }
+    .av-chase { background: linear-gradient(135deg, #3d7bff, #1d4ed8); }
+    .av-schwab { background: linear-gradient(135deg, #27b4e6, #0b7fb3); }
+    .acct-name { font-weight: 580; }
+    .acct-sub { font-size: 12.5px; color: var(--text-2); }
+    .amount-col { text-align: right; }
+    .amount-col .big { font-weight: 620; }
+    .chev { color: var(--text-3); transition: transform .15s var(--ease), color .15s var(--ease); }
+    .list-head {
+      display: grid; grid-template-columns: 40px 1.4fr 1.2fr 1fr 140px 20px; gap: 16px;
+      padding: 14px 22px 10px; font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3);
+    }
+
+    /* ---------- Budget ---------- */
+    .rta {
+      display: grid; grid-template-columns: 1fr 1.4fr; gap: 28px; align-items: center;
+      padding: 26px; background: var(--hero);
+    }
+    .rta .value { font-size: 38px; font-weight: 680; letter-spacing: -.03em; margin-top: 8px; }
+    .rta-form { display: grid; grid-template-columns: 1.3fr 1fr auto; gap: 12px; align-items: end; }
+    .env-row {
+      display: grid; grid-template-columns: 36px 1fr auto auto; gap: 14px; align-items: center;
+      padding: 14px 22px; border-top: 1px solid var(--border-soft);
+    }
+    .env-icon { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--surface-2); font-size: 16px; }
+    .new-env { display: flex; gap: 10px; padding: 16px 22px; border-top: 1px dashed var(--border); }
+    .new-env .input { height: 36px; }
+
+    /* ---------- Statements / upload ---------- */
+    .drop {
+      display: grid; place-items: center; text-align: center; gap: 10px;
+      padding: 44px 24px; border: 1.5px dashed var(--border); border-radius: var(--radius-lg);
+      background: var(--surface); cursor: pointer;
+      transition: border-color .2s var(--ease), background .2s var(--ease);
+    }
+    .drop:hover { border-color: var(--accent); background: var(--accent-soft); }
+    .drop-icon { width: 52px; height: 52px; border-radius: 14px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent-2); }
+    .drop-icon svg { width: 24px; height: 24px; }
+    .drop h3 { font-size: 16px; font-weight: 620; }
+    .drop input { display: none; }
+    .lock-note { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); margin-top: 4px; }
+    .lock-note svg { width: 14px; height: 14px; color: var(--pos); }
+
+    /* ---------- Ledger table ---------- */
+    .table { width: 100%; border-collapse: collapse; }
+    .table th {
+      text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em;
+      color: var(--text-3); font-weight: 550; padding: 10px 22px; border-bottom: 1px solid var(--border-soft);
+    }
+    .table td { padding: 13px 22px; border-bottom: 1px solid var(--border-soft); }
+    .table tr:last-child td { border-bottom: 0; }
+    .table tbody tr:hover td { background: var(--surface-2); }
+    .table .r { text-align: right; }
+    .amt-pos { color: var(--pos); }
+    .crumb { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); font-size: 13px; cursor: pointer; }
+    .crumb:hover { color: var(--text); }
+    .stmt-head { display: flex; align-items: center; gap: 16px; }
+    .stmt-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--border-soft); border-top: 1px solid var(--border-soft); margin-top: 18px; }
+    .stmt-stats > div { background: var(--surface); padding: 16px 22px; }
+    .stmt-stats .v { font-size: 18px; font-weight: 640; margin-top: 4px; }
+
+    /* ---------- Audit ---------- */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+    .audit-result { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 16px; }
+    .stat { padding: 14px; border-radius: var(--radius); background: var(--surface-2); }
+    .stat .v { font-size: 18px; font-weight: 640; margin-top: 4px; }
+    .boundary {
+      display: flex; gap: 12px; align-items: flex-start; padding: 14px; border-radius: var(--radius);
+      background: var(--accent-soft); color: var(--text-2); font-size: 12.5px; margin-bottom: 16px;
+    }
+    .boundary svg { width: 18px; height: 18px; color: var(--accent-2); flex: none; margin-top: 1px; }
+
+    /* ---------- Empty / error states ---------- */
+    .empty { text-align: center; padding: 56px 24px; display: grid; justify-items: center; gap: 10px; }
+    .empty-art { width: 64px; height: 64px; border-radius: 18px; display: grid; place-items: center; background: var(--surface-2); color: var(--text-3); }
+    .empty-art svg { width: 28px; height: 28px; }
+    .empty h3 { font-size: 16px; font-weight: 620; }
+    .empty p { color: var(--text-2); max-width: 380px; }
+    .alert {
+      display: flex; gap: 14px; align-items: flex-start;
+      padding: 16px 18px; border-radius: var(--radius);
+      background: var(--neg-soft); border: 1px solid color-mix(in srgb, var(--neg) 35%, transparent);
+    }
+    .alert svg { width: 20px; height: 20px; color: var(--neg); flex: none; margin-top: 1px; }
+    .alert h4 { font-size: 14px; font-weight: 620; color: var(--neg); }
+    .alert code { font-family: var(--mono); font-size: 12px; background: var(--surface-2); padding: 1px 6px; border-radius: 6px; color: var(--text); }
+    .alert p { color: var(--text-2); font-size: 13px; margin-top: 4px; }
+
+    /* ---------- Views & states (mockup only) ---------- */
+    .view { display: none; }
+    .view.active { display: grid; gap: 20px; animation: rise .35s var(--ease); }
+    [data-state="data"] .s-empty, [data-state="data"] .s-error { display: none; }
+    [data-state="empty"] .s-data, [data-state="empty"] .s-error { display: none; }
+    [data-state="error"] .s-empty { display: none; }
+    @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+    /* ---------- Review bar (mockup only) ---------- */
+    .review {
+      position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 20;
+      display: flex; gap: 6px; align-items: center; padding: 6px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 999px; box-shadow: var(--shadow);
+      font-size: 12px;
+    }
+    .review span { padding: 0 8px 0 10px; color: var(--text-3); text-transform: uppercase; letter-spacing: .06em; font-size: 10.5px; }
+    .seg { display: flex; background: var(--surface-2); border-radius: 999px; padding: 2px; }
+    .seg button { border: 0; background: none; padding: 5px 12px; border-radius: 999px; cursor: pointer; color: var(--text-2); }
+    .seg button.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+
+    /* ---------- Responsive ---------- */
+    @media (max-width: 980px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar { position: static; height: auto; flex-direction: row; align-items: center; overflow-x: auto; padding: 12px 16px; border-right: 0; border-bottom: 1px solid var(--border-soft); }
+      .nav { flex-direction: row; }
+      .nav-label, .vault-card, .nav .count { display: none; }
+      .kpis, .grid-2, .rta, .rta-form { grid-template-columns: 1fr; }
+      .topbar, .content { padding-left: 18px; padding-right: 18px; }
+      .list-head { display: none; }
+      .list-row { grid-template-columns: 40px 1fr auto; }
+      .list-row .hide-sm { display: none; }
+      .audit-result { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <!-- Inline SVG sprite (hand-drawn paths, no external icon set) -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h14V9.5"/></symbol>
+    <symbol id="i-wallet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="14" rx="3"/><path d="M3 10h18"/><circle cx="16.5" cy="15" r="1.2" fill="currentColor"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4.5 6v6c0 4.5 3.2 7.8 7.5 9 4.3-1.2 7.5-4.5 7.5-9V6z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 6-6 6 6 6"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5"/><circle cx="12" cy="16" r=".8" fill="currentColor"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v4h-4"/></symbol>
+  </svg>
+
+  <div class="app" id="app" data-state="data">
+    <!-- ================= Sidebar ================= -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"><path d="M6 3h12l4 6-10 12L2 9z"/><path d="M2 9h20M9 3l3 18 3-18"/></svg>
+        </div>
+        <div class="brand-name">SAPPHIRE</div>
+      </div>
+
+      <nav class="nav" aria-label="Primary">
+        <div class="nav-label">Money</div>
+        <button data-view="overview" aria-current="page"><svg><use href="#i-home"/></svg>Overview</button>
+        <button data-view="budget"><svg><use href="#i-wallet"/></svg>Budget<span class="count s-data">5</span></button>
+        <button data-view="statements"><svg><use href="#i-doc"/></svg>Statements<span class="count s-data">3</span></button>
+        <div class="nav-label" style="margin-top:14px">Verify</div>
+        <button data-view="audit"><svg><use href="#i-shield"/></svg>Audit</button>
+      </nav>
+
+      <div class="vault-card">
+        <div class="row"><span class="dot"></span>Local Vault online</div>
+        <ul>
+          <li><span>Parsing</span><span>On-device</span></li>
+          <li><span>PII to cloud</span><span>Never</span></li>
+          <li><span>Precision</span><span>Integer cents</span></li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- ================= Main ================= -->
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <h1 id="page-title">Overview</h1>
+          <p id="page-sub">Balances from your latest statements</p>
+        </div>
+        <button class="btn btn-primary" data-view="statements"><svg><use href="#i-upload"/></svg>Upload statement</button>
+      </header>
+
+      <div class="content">
+
+        <!-- ========== OVERVIEW ========== -->
+        <section class="view active" id="view-overview">
+          <div class="s-error alert">
+            <svg><use href="#i-alert"/></svg>
+            <div>
+              <h4>Couldn't load the Vault overview</h4>
+              <p>Error <code>VAULT_UNAVAILABLE</code> — the local database did not respond. Nothing was changed. Retry once the Vault is running.</p>
+            </div>
+          </div>
+
+          <div class="kpis s-data">
+            <div class="card hero">
+              <div class="eyebrow">Total closing balance</div>
+              <div class="value num">$48,210<span class="cents">.37</span></div>
+              <div class="meta"><span class="chip chip-pos num">▲ $2,104.55</span><span>net this period · 3 accounts</span></div>
+            </div>
+            <div class="card kpi">
+              <div class="eyebrow">Ready to Assign</div>
+              <div class="value num">$1,240.00</div>
+              <div class="foot"><span>Unbudgeted dollars</span><button class="btn-link" data-view="budget">Assign →</button></div>
+            </div>
+            <div class="card kpi">
+              <div class="eyebrow">Last statement</div>
+              <div class="value">Sep 30</div>
+              <div class="foot"><span>SYNTHETIC Chase *0000</span><span class="chip chip-accent">Parsed</span></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h2>Accounts</h2>
+                <p>Opening → closing per statement period. Click a row for transactions.</p>
+              </div>
+              <span class="chip chip-neutral s-data">3 accounts</span>
+            </div>
+
+            <div class="s-data">
+              <div class="list-head"><span></span><span>Account</span><span class="hide-sm">Period</span><span class="amount-col hide-sm">Opening</span><span class="amount-col">Closing</span><span></span></div>
+              <ul class="list">
+                <li class="list-row" data-view="ledger">
+                  <div class="avatar av-chase">C</div>
+                  <div><div class="acct-name">SYNTHETIC Chase</div><div class="acct-sub">Checking · *0000</div></div>
+                  <div class="acct-sub hide-sm">Sep 1 – Sep 30, 2026</div>
+                  <div class="amount-col muted num hide-sm">$6,812.40</div>
+                  <div class="amount-col"><div class="big num">$8,330.12</div><span class="chip chip-pos num">+$1,517.72</span></div>
+                  <svg class="chev" width="18" height="18"><use href="#i-chev"/></svg>
+                </li>
+                <li class="list-row" data-view="ledger">
+                  <div class="avatar av-chase">C</div>
+                  <div><div class="acct-name">SYNTHETIC Chase</div><div class="acct-sub">Credit card · *0001</div></div>
+                  <div class="acct-sub hide-sm">Sep 1 – Sep 30, 2026</div>
+                  <div class="amount-col muted num hide-sm">−$1,104.18</div>
+                  <div class="amount-col"><div class="big num">−$1,412.93</div><span class="chip chip-neg num">−$308.75</span></div>
+                  <svg class="chev" width="18" height="18"><use href="#i-chev"/></svg>
+                </li>
+                <li class="list-row" data-view="ledger">
+                  <div class="avatar av-schwab">S</div>
+                  <div><div class="acct-name">SYNTHETIC Schwab</div><div class="acct-sub">Brokerage · *0002</div></div>
+                  <div class="acct-sub hide-sm">Sep 1 – Sep 30, 2026</div>
+                  <div class="amount-col muted num hide-sm">$40,397.60</div>
+                  <div class="amount-col"><div class="big num">$41,293.18</div><span class="chip chip-pos num">+$895.58</span></div>
+                  <svg class="chev" width="18" height="18"><use href="#i-chev"/></svg>
+                </li>
+              </ul>
+            </div>
+
+            <div class="s-empty empty">
+              <div class="empty-art"><svg><use href="#i-doc"/></svg></div>
+              <h3>No statements in the Vault yet</h3>
+              <p>Upload a Chase or Schwab PDF. It's parsed on this machine and your balances appear here.</p>
+              <button class="btn btn-primary" data-view="statements" style="margin-top:6px"><svg><use href="#i-upload"/></svg>Upload your first statement</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========== BUDGET ========== -->
+        <section class="view" id="view-budget">
+          <div class="s-error alert">
+            <svg><use href="#i-alert"/></svg>
+            <div>
+              <h4>Assignment rejected</h4>
+              <p>Error <code>OVER_ASSIGN</code> — that amount exceeds Ready to Assign. No envelopes were changed.</p>
+            </div>
+          </div>
+
+          <div class="card rta">
+            <div>
+              <div class="eyebrow">Ready to Assign</div>
+              <div class="value num">$1,240.00</div>
+              <p class="muted" style="margin-top:6px;font-size:13px">Vault closings minus everything already in envelopes.</p>
+            </div>
+            <form class="rta-form" onsubmit="return false">
+              <div class="field">
+                <label for="m-env">Envelope</label>
+                <select id="m-env" class="select">
+                  <option>SYNTHETIC Groceries</option><option>SYNTHETIC Rent</option><option>SYNTHETIC Travel</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="m-amt">Amount</label>
+                <div class="input-prefix"><span>$</span><input id="m-amt" class="input num" placeholder="50.00" inputmode="decimal"></div>
+              </div>
+              <button class="btn btn-primary">Assign</button>
+            </form>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <div><h2>Envelopes</h2><p>Every dollar gets a job.</p></div>
+              <span class="chip chip-neutral num s-data">$7,090.12 assigned</span>
+            </div>
+            <div class="card-body" style="padding:12px 0 0">
+              <div class="s-data">
+                <div class="env-row"><div class="env-icon">🏠</div><div class="acct-name">SYNTHETIC Rent</div><span class="faint" style="font-size:12px">Assigned</span><div class="big num" style="font-weight:620">$2,400.00</div></div>
+                <div class="env-row"><div class="env-icon">🛒</div><div class="acct-name">SYNTHETIC Groceries</div><span class="faint" style="font-size:12px">Assigned</span><div class="num" style="font-weight:620">$650.00</div></div>
+                <div class="env-row"><div class="env-icon">⚡</div><div class="acct-name">SYNTHETIC Utilities</div><span class="faint" style="font-size:12px">Assigned</span><div class="num" style="font-weight:620">$240.12</div></div>
+                <div class="env-row"><div class="env-icon">✈️</div><div class="acct-name">SYNTHETIC Travel</div><span class="faint" style="font-size:12px">Assigned</span><div class="num" style="font-weight:620">$1,800.00</div></div>
+                <div class="env-row"><div class="env-icon">🛟</div><div class="acct-name">SYNTHETIC Emergency fund</div><span class="faint" style="font-size:12px">Assigned</span><div class="num" style="font-weight:620">$2,000.00</div></div>
+              </div>
+              <div class="s-empty empty" style="padding:36px 24px">
+                <div class="empty-art"><svg><use href="#i-wallet"/></svg></div>
+                <h3>No envelopes yet</h3>
+                <p>Create your first envelope below, then assign dollars to it.</p>
+              </div>
+              <form class="new-env" onsubmit="return false">
+                <input class="input" placeholder="New envelope name, e.g. Groceries" aria-label="Envelope name">
+                <button class="btn btn-ghost btn-sm" style="height:36px"><svg><use href="#i-plus"/></svg>Create</button>
+              </form>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========== STATEMENTS ========== -->
+        <section class="view" id="view-statements">
+          <div class="s-error alert">
+            <svg><use href="#i-alert"/></svg>
+            <div>
+              <h4>Upload rejected</h4>
+              <p>Error <code>BALANCE_EQUATION_VIOLATION</code> — opening + activity ≠ closing on page 2. The statement was not saved. Check you uploaded the full PDF.</p>
+            </div>
+          </div>
+
+          <label class="drop">
+            <input type="file" accept="application/pdf,.pdf">
+            <div class="drop-icon"><svg><use href="#i-upload"/></svg></div>
+            <h3>Drop a statement PDF here</h3>
+            <p class="muted">or <span style="color:var(--accent-2);font-weight:550">browse files</span> · Chase and Schwab supported</p>
+            <span class="lock-note"><svg><use href="#i-lock"/></svg>Parsed locally — raw statements never leave the Vault</span>
+          </label>
+
+          <div class="card">
+            <div class="card-head"><div><h2>Recent statements</h2><p>Every upload is reconciled before it's saved.</p></div></div>
+            <div class="card-body" style="padding:12px 0 6px">
+              <table class="table s-data">
+                <thead><tr><th>Account</th><th>Period</th><th>Adapter</th><th class="r">Status</th></tr></thead>
+                <tbody>
+                  <tr data-view="ledger" style="cursor:pointer"><td class="acct-name">SYNTHETIC Chase *0000</td><td class="muted">Sep 1 – Sep 30, 2026</td><td class="muted">chase_checking</td><td class="r"><span class="chip chip-pos">Reconciled</span></td></tr>
+                  <tr data-view="ledger" style="cursor:pointer"><td class="acct-name">SYNTHETIC Chase *0001</td><td class="muted">Sep 1 – Sep 30, 2026</td><td class="muted">chase_card</td><td class="r"><span class="chip chip-pos">Reconciled</span></td></tr>
+                  <tr data-view="ledger" style="cursor:pointer"><td class="acct-name">SYNTHETIC Schwab *0002</td><td class="muted">Sep 1 – Sep 30, 2026</td><td class="muted">schwab_brokerage</td><td class="r"><span class="chip chip-pos">Reconciled</span></td></tr>
+                </tbody>
+              </table>
+              <div class="s-empty empty" style="padding:32px">
+                <p>No statements yet — your uploads will show up here.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========== LEDGER (drill-in) ========== -->
+        <section class="view" id="view-ledger">
+          <span class="crumb" data-view="overview"><svg width="16" height="16"><use href="#i-back"/></svg>Overview</span>
+          <div class="card" style="overflow:hidden">
+            <div class="card-body" style="padding-bottom:0">
+              <div class="stmt-head">
+                <div class="avatar av-chase">C</div>
+                <div>
+                  <h2 style="font-size:18px;font-weight:650">SYNTHETIC Chase Checking *0000</h2>
+                  <p class="muted" style="font-size:13px">Sep 1 – Sep 30, 2026 · chase_checking</p>
+                </div>
+                <span class="chip chip-pos" style="margin-left:auto">Reconciled</span>
+              </div>
+            </div>
+            <div class="stmt-stats">
+              <div><div class="eyebrow">Opening</div><div class="v num">$6,812.40</div></div>
+              <div><div class="eyebrow">Net change</div><div class="v num amt-pos">+$1,517.72</div></div>
+              <div><div class="eyebrow">Closing</div><div class="v num">$8,330.12</div></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-head"><div><h2>Transactions</h2><p>6 rows · integer cents stored, USD shown</p></div></div>
+            <div class="card-body" style="padding:12px 0 6px">
+              <table class="table">
+                <thead><tr><th>Date</th><th>Description</th><th>Type</th><th class="r">Amount</th></tr></thead>
+                <tbody>
+                  <tr><td class="muted num">Sep 01</td><td>SYNTHETIC Payroll</td><td><span class="chip chip-neutral">Deposit</span></td><td class="r num amt-pos">+$3,200.00</td></tr>
+                  <tr><td class="muted num">Sep 03</td><td>SYNTHETIC Rent Co</td><td><span class="chip chip-neutral">Withdrawal</span></td><td class="r num">−$2,400.00</td></tr>
+                  <tr><td class="muted num">Sep 09</td><td>SYNTHETIC Grocer</td><td><span class="chip chip-neutral">Purchase</span></td><td class="r num">−$142.18</td></tr>
+                  <tr><td class="muted num">Sep 15</td><td>SYNTHETIC Payroll</td><td><span class="chip chip-neutral">Deposit</span></td><td class="r num amt-pos">+$3,200.00</td></tr>
+                  <tr><td class="muted num">Sep 21</td><td>SYNTHETIC Utility</td><td><span class="chip chip-neutral">Withdrawal</span></td><td class="r num">−$240.12</td></tr>
+                  <tr><td class="muted num">Sep 27</td><td>SYNTHETIC Card payment</td><td><span class="chip chip-neutral">Withdrawal</span></td><td class="r num">−$2,099.98</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========== AUDIT ========== -->
+        <section class="view" id="view-audit">
+          <div class="grid-2">
+            <div class="card">
+              <div class="card-head"><div><h2>Vault ledger</h2><p>Re-read the latest persisted statements.</p></div></div>
+              <div class="card-body">
+                <button class="btn btn-ghost" style="width:100%"><svg><use href="#i-refresh"/></svg>Show latest ledger</button>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-head"><div><h2>Frontier verification</h2><p>Independent check of aggregate totals.</p></div></div>
+              <div class="card-body">
+                <div class="boundary"><svg><use href="#i-shield"/></svg><div>Only grouped totals are sent. No descriptions, account numbers, or individual transactions leave the Vault.</div></div>
+                <form onsubmit="return false" style="display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end">
+                  <div class="field"><label for="m-grp">Group by</label><input id="m-grp" class="input" value="transaction_category"></div>
+                  <button class="btn btn-primary">Verify</button>
+                </form>
+              </div>
+            </div>
+          </div>
+
+          <div class="s-error alert">
+            <svg><use href="#i-alert"/></svg>
+            <div>
+              <h4>Verification rejected</h4>
+              <p>Error <code>INVALID_GROUP_BY</code> — <code>account_number</code> is not an allowed aggregate group.</p>
+            </div>
+          </div>
+
+          <div class="card s-data">
+            <div class="card-head">
+              <div><h2>Latest verification</h2><p>Grouped by transaction_category</p></div>
+              <span class="chip chip-pos">Totals match</span>
+            </div>
+            <div class="card-body">
+              <div class="audit-result">
+                <div class="stat"><div class="eyebrow">Transactions</div><div class="v num">142</div></div>
+                <div class="stat"><div class="eyebrow">Deposits</div><div class="v num amt-pos">$9,600.00</div></div>
+                <div class="stat"><div class="eyebrow">Purchases</div><div class="v num">$2,318.44</div></div>
+                <div class="stat"><div class="eyebrow">Withdrawals</div><div class="v num">$5,163.84</div></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- ================= Review bar (mockup only) ================= -->
+  <div class="review" role="toolbar" aria-label="Mockup controls">
+    <span>State</span>
+    <div class="seg" id="seg-state">
+      <button class="on" data-state="data">With data</button>
+      <button data-state="empty">Empty</button>
+      <button data-state="error">Error</button>
+    </div>
+    <span>Theme</span>
+    <div class="seg" id="seg-theme">
+      <button class="on" data-theme="dark">Dark</button>
+      <button data-theme="light">Light</button>
+    </div>
+  </div>
+
+  <script>
+    // Mockup-only navigation. The shipped build swaps #pane-vault-body via HTMX.
+    var titles = {
+      overview: ["Overview", "Balances from your latest statements"],
+      budget: ["Budget", "Give every dollar a job"],
+      statements: ["Statements", "Upload and reconcile PDFs locally"],
+      ledger: ["Statement", "Transactions for one statement period"],
+      audit: ["Audit", "Verify the Vault without exposing it"]
+    };
+    function show(view) {
+      document.querySelectorAll(".view").forEach(function (el) {
+        el.classList.toggle("active", el.id === "view-" + view);
+      });
+      var navView = view === "ledger" ? "overview" : view;
+      document.querySelectorAll(".nav button").forEach(function (b) {
+        if (b.dataset.view === navView) { b.setAttribute("aria-current", "page"); } else { b.removeAttribute("aria-current"); }
+      });
+      document.getElementById("page-title").textContent = titles[view][0];
+      document.getElementById("page-sub").textContent = titles[view][1];
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+    document.addEventListener("click", function (e) {
+      var t = e.target.closest("[data-view]");
+      if (t) { e.preventDefault(); show(t.dataset.view); }
+    });
+    document.querySelectorAll("#seg-state button").forEach(function (b) {
+      b.addEventListener("click", function () {
+        document.getElementById("app").dataset.state = b.dataset.state;
+        document.querySelectorAll("#seg-state button").forEach(function (x) { x.classList.toggle("on", x === b); });
+      });
+    });
+    document.querySelectorAll("#seg-theme button").forEach(function (b) {
+      b.addEventListener("click", function () {
+        document.documentElement.dataset.theme = b.dataset.theme;
+        document.querySelectorAll("#seg-theme button").forEach(function (x) { x.classList.toggle("on", x === b); });
+      });
+    });
+    var params = new URLSearchParams(location.search);
+    if (params.get("theme")) { document.querySelector('#seg-theme [data-theme="' + params.get("theme") + '"]').click(); }
+    if (params.get("state")) { document.querySelector('#seg-state [data-state="' + params.get("state") + '"]').click(); }
+    if (params.get("view")) { show(params.get("view")); }
+  </script>
+</body>
+</html>

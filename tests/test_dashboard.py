@@ -38,19 +38,15 @@ class TestDashboardPage:
         assert response.status_code == 200
         assert "text/html" in response.headers["content-type"]
         assert "SAPPHIRE" in response.text
-        assert (
-            "Upload &amp; actions" in response.text
-            or "Upload & actions" in response.text
-        )
-        assert "The Local Vault" in response.text
-        assert "Upload to Vault" in response.text
+        assert "Local Vault" in response.text
+        assert "Upload statement" in response.text
 
     def test_dashboard_contains_htmx_attributes(self, client: TestClient) -> None:
         """Dashboard HTML must include HTMX attributes for interactivity."""
         response = client.get("/dashboard")
         assert response.status_code == 200
         html = response.text
-        assert "hx-post" in html
+        assert "hx-get" in html
         assert "hx-swap" in html
         assert "hx-target" in html
 
@@ -217,16 +213,17 @@ class TestFrontierAuditButton:
     """Dashboard posts sanitized aggregates to the frontier audit path."""
 
     def test_dashboard_has_frontier_verify_control(self, client: TestClient) -> None:
-        response = client.get("/dashboard")
+        response = client.get("/api/v1/dashboard/audit", headers={"HX-Request": "true"})
         html = response.text
         assert 'id="frontier-verify-btn"' in html
         assert 'hx-post="/api/v1/dashboard/frontier-audit"' in html
         assert "Verify &amp; Analyze with Frontier Model" in html or (
             "Verify & Analyze with Frontier Model" in html
         )
-        assert "htmx:beforeSwap" in html
-        assert 'url.indexOf("/api/v1/dashboard/frontier-audit")' in html
-        assert "event.detail.shouldSwap = true" in html
+        page = client.get("/dashboard").text
+        assert "htmx:beforeSwap" in page
+        assert 'url.indexOf("/api/v1/dashboard/frontier-audit")' in page
+        assert "event.detail.shouldSwap = true" in page
 
     def test_frontier_audit_renders_integer_cents(
         self, client: TestClient, monkeypatch

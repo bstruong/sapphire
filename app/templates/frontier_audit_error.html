@@ -1,5 +1,8 @@
-<div class="analysis-result" id="frontier-audit-error">
-    <h3>Frontier aggregate audit</h3>
-    <p><strong>Status:</strong> <span class="status-badge status-err">Rejected</span></p>
-    <p>{{ detail }}</p>
+<div class="alert" id="frontier-audit-error" role="alert">
+    <svg class="icon"><use href="#i-alert"/></svg>
+    <div>
+        <h4>Rejected</h4>
+        <p>Error <code>{{ error_code }}</code> &mdash; {{ detail }}</p>
+        <p class="muted">Nothing was saved.</p>
+    </div>
 </div>
