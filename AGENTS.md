@@ -178,6 +178,7 @@ The prior Dual-Tier path (cloud orchestrator plans only; local `qwen36-coder` / 
 
 ### Mutation Testing (`mutmut`) Anomalies
 * **PR vs Watchtower mutation:** Mutation is **not** a PR required check. Failures belong to `Mutation Nightly` on `main` (`[self-hosted, watchtower]`). Do not re-add a blocking `mutation:` job to `ci.yml` or move it back to daily `ubuntu-latest` without an explicit product decision.
+* **Mutation Postgres circuit breaker:** Do **not** restore `jobs.mutation.services` Postgres on Watchtower. DinD fails extracting `postgres:15` (overlayfs whiteout EPERM). Mutation uses **host** Postgres on the Watchtower node (`podman` container `sapphire-mutation-pg` → `:54329` / `sapphire_test`). See `homelab-k3s` `manifests/watchtower/github-runner/README.md`.
 * **`no_tests` (🫥) is a hard fail:** Untested / dead code on allowlisted modules fails `--max-no-tests 0`. Delete dead helpers or add assertion-heavy tests. Do **not** "fix" this by mutating presentation code or faking stats.
 * **Wrong score denominator:** Never use `killed/total`. `total` includes `no_tests` and skips. Use classic `killed/(killed+survived)` via `scripts/check_mutation_score.py`.
 * **Module Import Crashes (Exit Code 4):** `mutmut` isolates files in `mutants/`. Always keep `source_paths = ["app"]` and inject `only_mutate` via `scripts/run_mutation_on_diff.py`. Never point `source_paths` at a single file.

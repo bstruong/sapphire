@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -67,6 +68,14 @@ def test_mutmut_cache_key_omits_github_sha(mutation_text: str) -> None:
         and "github.sha" not in line
         for line in key_lines
     )
+
+
+def test_mutation_uses_host_postgres_circuit_breaker(mutation_text: str) -> None:
+    """DinD postgres:15 whiteout on Watchtower — no Actions service containers."""
+    assert re.search(r"(?m)^\s+services:\s*$", mutation_text) is None
+    assert "image: postgres:" not in mutation_text
+    assert "54329/sapphire_test" in mutation_text
+    assert "WATCHTOWER_HOST_IP" in mutation_text
 
 
 def test_docs_path_e2e_skip_present_in_ci(ci_text: str) -> None:

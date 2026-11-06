@@ -4,7 +4,12 @@ name: Mutation Nightly
 # full-allowlist on schedule, plus on-demand full via workflow_dispatch.
 # Pull requests are NOT blocked by mutation — they keep lint + coverage + agent review.
 # Runs on Watchtower self-hosted runners (homelab Option-1 github-runner); not a
-# PR required check. Schedule is useless until that runner is sealed/applied.
+# PR required check.
+#
+# Circuit breaker (DinD service containers): Watchtower DinD cannot extract
+# postgres:15 (overlayfs whiteout EPERM). Do NOT use jobs.*.services postgres.
+# Point at host Postgres on the Watchtower node (podman sapphire-mutation-pg
+# publishing :54329) — see homelab-k3s manifests/watchtower/github-runner/README.md.
 on:
   schedule:
     # Weekly full-allowlist Sunday 08:00 UTC (not daily — quota / runner cost)
@@ -35,21 +40,7 @@ jobs:
     name: Mutation Testing (main)
     runs-on: [self-hosted, watchtower]
     # Failures here are required for main health, not for PR merge.
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: sapphire
-          POSTGRES_DB: sapphire_test
-        ports:
-          - 54329:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-          --tmpfs /var/lib/postgresql/data
+    # No jobs.*.services: host Postgres on Watchtower :54329 (circuit breaker).
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -61,12 +52,47 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Resolve host Postgres URL
+        id: db
+        run: |
+          # Prefer runner-injected node IP; else DNS for the Watchtower node.
+          # Host podman publishes sapphire-mutation-pg on 0.0.0.0:54329.
+          if [ -z "${WATCHTOWER_HOST_IP:-}" ]; then
+            WATCHTOWER_HOST_IP="$(getent hosts watchtower | awk '{print $1}' | head -n1)"
+          fi
+          if [ -z "${WATCHTOWER_HOST_IP}" ]; then
+            echo "::error::WATCHTOWER_HOST_IP unset and host 'watchtower' did not resolve"
+            exit 1
+          fi
+          echo "host_ip=${WATCHTOWER_HOST_IP}" >> "$GITHUB_OUTPUT"
+          echo "Using host Postgres at ${WATCHTOWER_HOST_IP}:54329 (no Actions service container)"
+      - name: Wait for host Postgres
+        run: |
+          python3 - <<'PY'
+          import os, socket, time
+          host = os.environ["HOST_IP"]
+          port = 54329
+          deadline = time.time() + 60
+          while time.time() < deadline:
+              sock = socket.socket()
+              sock.settimeout(2)
+              try:
+                  if sock.connect_ex((host, port)) == 0:
+                      print(f"host Postgres reachable at {host}:{port}")
+                      raise SystemExit(0)
+              finally:
+                  sock.close()
+              time.sleep(2)
+          raise SystemExit(f"host Postgres not reachable at {host}:{port} within 60s")
+          PY
+        env:
+          HOST_IP: ${{ steps.db.outputs.host_ip }}
       - name: Install dependencies
         run: uv sync
       - name: Initialize Test Database Schema
         env:
-          TEST_DATABASE_URL: postgresql://postgres:sapphire@localhost:54329/sapphire_test
-          DATABASE_URL: postgresql://postgres:sapphire@localhost:54329/sapphire_test
+          TEST_DATABASE_URL: ${{ format('postgresql://postgres:sapphire@{0}:54329/sapphire_test', steps.db.outputs.host_ip) }}
+          DATABASE_URL: ${{ format('postgresql://postgres:sapphire@{0}:54329/sapphire_test', steps.db.outputs.host_ip) }}
         run: uv run python -c "from app.db.connection import init_db; init_db()"
       - name: Resolve mutmut cache fingerprint
         id: mutmut_meta
@@ -86,8 +112,8 @@ jobs:
         # [tool.mutmut] pytest_add_cli_args and hidden by run_mutation_on_diff.py.
         # Push → allowlisted diff; schedule / workflow_dispatch → full allowlist.
         env:
-          TEST_DATABASE_URL: postgresql://postgres:sapphire@localhost:54329/sapphire_test
-          DATABASE_URL: postgresql://postgres:sapphire@localhost:54329/sapphire_test
+          TEST_DATABASE_URL: ${{ format('postgresql://postgres:sapphire@{0}:54329/sapphire_test', steps.db.outputs.host_ip) }}
+          DATABASE_URL: ${{ format('postgresql://postgres:sapphire@{0}:54329/sapphire_test', steps.db.outputs.host_ip) }}
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then
             echo "Path-filtered main push: running allowlisted diff mutation"
