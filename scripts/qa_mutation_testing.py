@@ -72,6 +72,12 @@ def main() -> int:
         "Mutation preflight must not require Playwright browsers.",
     )
     assert_gate(
+        "Workflow-policy tests ignored in mutmut pytest args",
+        "--ignore=tests/test_ci_pr_slim.py" in pyproject
+        and "--ignore=tests/test_ci_reliability.py" in pyproject,
+        "mutants/ lacks .github/; those asserts ERROR collection under mutmut.",
+    )
+    assert_gate(
         "Presentation layers listed in do_not_mutate",
         "do_not_mutate" in pyproject and "app/api/*" in pyproject,
         "API/dashboard/MCP glue is out of financial mutation scope.",

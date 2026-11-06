@@ -54,6 +54,10 @@ pytest_add_cli_args = [
     # Meta-tests of mutation gate scripts load scripts/ from repo root; mutmut
     # only copies app/ into mutants/, so these must not run under mutmut.
     "--ignore=tests/test_mutation_gates.py",
+    # Workflow-policy tests read .github/workflows/*.yml and AGENTS.md; mutmut
+    # only copies app/ into mutants/, so those paths are missing and assert.
+    "--ignore=tests/test_ci_pr_slim.py",
+    "--ignore=tests/test_ci_reliability.py",
     # Out-of-scope layers: mutating them is disabled; their tests can fail
     # preflight when optional services (GPU MCP, etc.) are absent.
     "--ignore=tests/routers",

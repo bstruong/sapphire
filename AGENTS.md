@@ -184,7 +184,7 @@ The prior Dual-Tier path (cloud orchestrator plans only; local `qwen36-coder` / 
 * **Module Import Crashes (Exit Code 4):** `mutmut` isolates files in `mutants/`. Always keep `source_paths = ["app"]` and inject `only_mutate` via `scripts/run_mutation_on_diff.py`. Never point `source_paths` at a single file.
 * **Out-of-scope diffs:** Presentation/API/MCP/orchestrator are out of mutation scope. Nightly uses `--full-allowlist`; local diff mode still writes `skipped: true` when no allowlisted files changed.
 * **Slow Mutations / E2E:** E2E tests are ignored in `[tool.mutmut]` and renamed `.bak` during runs. Playwright belongs on the **coverage** job only, not the mutation workflow.
-* **Meta-tests under mutmut:** `tests/test_mutation_gates.py` must stay in mutmut `--ignore` (loads `scripts/` which is not copied into `mutants/`).
+* **Meta-tests under mutmut:** `tests/test_mutation_gates.py` must stay in mutmut `--ignore` (loads `scripts/` which is not copied into `mutants/`). Workflow-policy tests (`tests/test_ci_pr_slim.py`, `tests/test_ci_reliability.py`) must also stay ignored — they assert on `.github/workflows/*.yml` / `AGENTS.md`, which mutmut does not copy into `mutants/`.
 * **Single config:** Do not reintroduce `setup.cfg` for mutmut; `[tool.mutmut]` in `pyproject.toml` is authoritative.
 
 ### Local Coding Harness (`pi-up.sh` / `llama-up.sh`)

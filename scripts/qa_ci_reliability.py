@@ -181,6 +181,32 @@ def test_agents_docs_match_reality(agents: str) -> None:
         or "does **not** run mutmut" in agents
         or "PR CI does not run mutmut" in agents,
     )
+    assert_condition(
+        "AGENTS documents workflow-policy tests ignored under mutmut",
+        "test_ci_pr_slim.py" in agents and "test_ci_reliability.py" in agents,
+        "mutants/ lacks .github/; those tests must stay in mutmut --ignore.",
+    )
+
+
+def test_mutmut_ignores_workflow_policy_tests(pyproject: str) -> None:
+    print_header("6. mutmut ignores workflow-policy tests (mutants/ has no .github/)")
+    assert_condition(
+        "pyproject mutmut ignores test_ci_pr_slim.py",
+        "--ignore=tests/test_ci_pr_slim.py" in pyproject,
+        "Otherwise collection ERRORs on missing ci.yml under mutants/.",
+    )
+    assert_condition(
+        "pyproject mutmut ignores test_ci_reliability.py",
+        "--ignore=tests/test_ci_reliability.py" in pyproject,
+        "Otherwise collection ERRORs on missing workflows under mutants/.",
+    )
+    bad_pyproject = '[tool.mutmut]\npytest_add_cli_args = ["--ignore=tests/test_e2e_dashboard.py"]\n'
+    assert_condition(
+        "Detects missing workflow-policy ignores (negative)",
+        "--ignore=tests/test_ci_pr_slim.py" not in bad_pyproject
+        and "--ignore=tests/test_ci_reliability.py" not in bad_pyproject,
+        "Synthetic pyproject without ignores would fail gate 6.",
+    )
 
 
 def main() -> int:
@@ -193,18 +219,22 @@ def main() -> int:
     ci_path = root / ".github" / "workflows" / "ci.yml"
     nightly_path = root / ".github" / "workflows" / "mutation-nightly.yml"
     agents_path = root / "AGENTS.md"
+    pyproject_path = root / "pyproject.toml"
     try:
         assert_condition("ci.yml exists", ci_path.is_file())
         assert_condition("mutation-nightly.yml exists", nightly_path.is_file())
         assert_condition("AGENTS.md exists", agents_path.is_file())
+        assert_condition("pyproject.toml exists", pyproject_path.is_file())
         ci = ci_path.read_text(encoding="utf-8")
         nightly = nightly_path.read_text(encoding="utf-8")
         agents = agents_path.read_text(encoding="utf-8")
+        pyproject = pyproject_path.read_text(encoding="utf-8")
         test_no_mutmut_on_pr_ci(ci)
         test_mutation_self_hosted_policy(nightly)
         test_docs_path_e2e_skip(ci)
         test_negative_policy_detection()
         test_agents_docs_match_reality(agents)
+        test_mutmut_ignores_workflow_policy_tests(pyproject)
         print("\n" + "=" * 75)
         print("QA RESULT: ALL ACCEPTANCE GATES PASSED")
         print("=" * 75)

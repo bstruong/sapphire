@@ -59,6 +59,11 @@ def main() -> int:
         "--ignore=tests/test_e2e_dashboard.py" in pyproject,
     )
     check(
+        "5. Workflow-policy tests ignored in mutmut pytest args",
+        "--ignore=tests/test_ci_pr_slim.py" in pyproject
+        and "--ignore=tests/test_ci_reliability.py" in pyproject,
+    )
+    check(
         "6. PR CI does not run mutation job",
         "mutation:" not in ci and "check_mutation_score.py" not in ci,
     )
