@@ -15,5 +15,4 @@ To schedule work: shape a pitch from [`PITCH_TEMPLATE.md`](PITCH_TEMPLATE.md), a
 - Synthetic PDF fixtures (beyond JSON token fixtures) for layout-hard statements
 - Full Grafana Tempo / Prometheus / Loki dashboards beyond collector smoke (depends on Watchtower telemetry pitch)
 - Traefik ingress hardening notes for Vault deployment
-- Multi-month net-worth history charts beyond the account overview snapshot
 - Transaction → envelope linking (if circuit-broken out of YNAB budgets Small Batch)
