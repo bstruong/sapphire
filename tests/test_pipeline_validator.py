@@ -742,7 +742,11 @@ class TestHoldingsValuation:
         )
 
     def test_as_of_day_before_start_fails(self) -> None:
-        with pytest.raises(InvariantError, match="outside the statement period"):
+        # Exact prefix kills string mutants (XX…XX / case flips) on the message.
+        with pytest.raises(
+            InvariantError,
+            match=r"^Holding as_of_date 2025-07-31 is outside the statement period\.$",
+        ):
             validate_holdings_valuation(
                 [_holding(datetime.date(2025, 7, 31), 100)],
                 100,
@@ -751,7 +755,10 @@ class TestHoldingsValuation:
             )
 
     def test_as_of_day_after_end_fails(self) -> None:
-        with pytest.raises(InvariantError, match="outside the statement period"):
+        with pytest.raises(
+            InvariantError,
+            match=r"^Holding as_of_date 2025-09-01 is outside the statement period\.$",
+        ):
             validate_holdings_valuation(
                 [_holding(datetime.date(2025, 9, 1), 100)],
                 100,
@@ -774,7 +781,10 @@ class TestHoldingsValuation:
 
     def test_or_not_and_for_out_of_range(self) -> None:
         # Date before start makes only the left clause true; `or`→`and` would miss it.
-        with pytest.raises(InvariantError, match="outside the statement period"):
+        with pytest.raises(
+            InvariantError,
+            match=r"^Holding as_of_date 2025-07-01 is outside the statement period\.$",
+        ):
             validate_holdings_valuation(
                 [_holding(datetime.date(2025, 7, 1), 50)],
                 50,
