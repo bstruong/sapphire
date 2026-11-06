@@ -1,28 +1,29 @@
 name: Mutation Nightly
 
-# Full allowlist mutation gate runs on main overnight (and on demand).
+# Mutation gate on main: path-filtered allowlist *diff* on push, weekly
+# full-allowlist on schedule, plus on-demand full via workflow_dispatch.
 # Pull requests are NOT blocked by mutation — they keep lint + coverage + agent review.
+# Runs on Watchtower self-hosted runners (homelab Option-1 github-runner); not a
+# PR required check. Schedule is useless until that runner is sealed/applied.
 on:
-  # Temporarily disabled automatic runs (cron + push) to prevent consuming remaining Actions quota.
-  # Mutation testing can still be run on demand via workflow_dispatch.
-  # schedule:
-  #   # 08:00 UTC daily
-  #   - cron: "0 8 * * *"
-  # push:
-  #   branches:
-  #     - main
-  #   paths:
-  #     - "app/pipeline/**"
-  #     - "app/adapters/**"
-  #     - "app/extraction/**"
-  #     - "app/models/**"
-  #     - "app/db/repository.py"
-  #     - "app/db/connection.py"
-  #     - "app/db/__init__.py"
-  #     - "scripts/run_mutation_on_diff.py"
-  #     - "scripts/check_mutation_score.py"
-  #     - "pyproject.toml"
-  #     - ".github/workflows/mutation-nightly.yml"
+  schedule:
+    # Weekly full-allowlist Sunday 08:00 UTC (not daily — quota / runner cost)
+    - cron: "0 8 * * 0"
+  push:
+    branches:
+      - main
+    paths:
+      - "app/pipeline/**"
+      - "app/adapters/**"
+      - "app/extraction/**"
+      - "app/models/**"
+      - "app/db/repository.py"
+      - "app/db/connection.py"
+      - "app/db/__init__.py"
+      - "scripts/run_mutation_on_diff.py"
+      - "scripts/check_mutation_score.py"
+      - "pyproject.toml"
+      - ".github/workflows/mutation-nightly.yml"
   workflow_dispatch:
 
 concurrency:
@@ -32,7 +33,7 @@ concurrency:
 jobs:
   mutation:
     name: Mutation Testing (main)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, watchtower]
     # Failures here are required for main health, not for PR merge.
     services:
       postgres:
@@ -78,15 +79,23 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .mutmut-cache
-          key: mutmut-nightly-${{ steps.mutmut_meta.outputs.mutmut_ver }}-${{ steps.mutmut_meta.outputs.config_hash }}-${{ github.sha }}
-      - name: Run full-allowlist mutation & quality score gate
+          # Commit SHA omitted from key so cache hits across commits
+          key: mutmut-nightly-${{ steps.mutmut_meta.outputs.mutmut_ver }}-${{ steps.mutmut_meta.outputs.config_hash }}
+      - name: Run mutation & quality score gate
         # Playwright is intentionally NOT installed: E2E tests are ignored via
         # [tool.mutmut] pytest_add_cli_args and hidden by run_mutation_on_diff.py.
+        # Push → allowlisted diff; schedule / workflow_dispatch → full allowlist.
         env:
           TEST_DATABASE_URL: postgresql://postgres:sapphire@localhost:54329/sapphire_test
           DATABASE_URL: postgresql://postgres:sapphire@localhost:54329/sapphire_test
         run: |
-          uv run python scripts/run_mutation_on_diff.py --full-allowlist
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "Path-filtered main push: running allowlisted diff mutation"
+            uv run python scripts/run_mutation_on_diff.py
+          else
+            echo "Schedule/dispatch: running full-allowlist mutation"
+            uv run python scripts/run_mutation_on_diff.py --full-allowlist
+          fi
           uv run python scripts/check_mutation_score.py --min-score 55.0 --max-no-tests 0
       - name: Upload mutation stats artifact
         if: always()

@@ -9,7 +9,7 @@ Agents must verify their work using the following commands:
 - **Lint:** `uv run ruff check .`
 - **Format Check:** `uv run ruff format --check .` (Format fix: `uv run ruff format .`)
 - **Test with Coverage Gate (>90%):** `uv run pytest --cov=app --cov-fail-under=90 -v`
-- **Mutation Testing (local / nightly):** `uv run python scripts/run_mutation_on_diff.py --full-allowlist && uv run python scripts/check_mutation_score.py --min-score 55.0 --max-no-tests 0` (PR CI does **not** run mutmut; see `.github/workflows/mutation-nightly.yml`)
+- **Mutation Testing (local / Watchtower):** `uv run python scripts/run_mutation_on_diff.py --full-allowlist && uv run python scripts/check_mutation_score.py --min-score 55.0 --max-no-tests 0` (PR CI does **not** run mutmut; CI mutation runs on `[self-hosted, watchtower]` — see `.github/workflows/mutation-nightly.yml`)
 - **Agent Invariant Review:** `uv run python scripts/agent_review.py`
 
 ### Database isolation (dogfood vs pytest)
@@ -78,7 +78,7 @@ All feature development and adapter implementations must strictly adhere to Test
    - High code coverage alone is meaningless if tests merely execute lines of code without validating outcomes. Tests must be robust enough to **kill mutations**.
    - Injected mutations (such as operator inversions `<` vs `<=`, altered arithmetic signs, or deleted statements) must cause test failures.
    - Core financial validators (such as `app/pipeline/validator.py`) enforce a **100% mutation kill rate (zero surviving mutants)**.
-   - **PR CI does not run mutmut** (avoids long/brittle PR blockers). Mutation is **required on `main` via nightly** (`.github/workflows/mutation-nightly.yml`: schedule + path-filtered main pushes + `workflow_dispatch`), using full allowlist (`--full-allowlist`) and `scripts/check_mutation_score.py --min-score 55.0 --max-no-tests 0`.
+   - **PR CI does not run mutmut** (avoids long/brittle PR blockers). Mutation is **not** a PR required check. On `main` it runs on the Watchtower self-hosted runner (`.github/workflows/mutation-nightly.yml`: **weekly** full-allowlist cron + path-filtered **diff** pushes + `workflow_dispatch` full), gated by `scripts/check_mutation_score.py --min-score 55.0 --max-no-tests 0`. It does **not** run daily on `ubuntu-latest`.
    - Agents changing financial modules should still run mutation locally when practical: `uv run python scripts/run_mutation_on_diff.py --full-allowlist`.
    - Score is classic `killed/(killed+survived)`. `no_tests` fails separately. Only financial allowlisted modules are mutated; API/dashboard/MCP are out of scope.
 
@@ -132,14 +132,14 @@ Before a pull request can be merged, the Reviewer Agent verifies:
 - [ ] **Strict Contract Enforcement:** No silent error suppression (`except Exception: pass`), no best-effort coercion, explicit taxonomy exceptions raised.
 - [ ] **Observability & Data Privacy:** Structured logging is configured at boundaries; no PII or financial amounts leaked.
 - [ ] **TDD & Coverage Gate:** `uv run pytest --cov=app --cov-fail-under=90` passes with >90% coverage.
-- [ ] **Mutation Testing (nightly on main):** Not a PR merge blocker. Confirm financial changes remain killable; nightly full-allowlist gate on `main` must stay green (`classic >= 55%`, `no_tests == 0`, zero survivors in `app/pipeline/validator.py`).
+- [ ] **Mutation Testing (Watchtower on main):** Not a PR merge blocker. Confirm financial changes remain killable; weekly full-allowlist + path-diff gates on `main` (self-hosted) must stay green (`classic >= 55%`, `no_tests == 0`, zero survivors in `app/pipeline/validator.py`).
 - [ ] **Code Hygiene:** `uv run ruff check .` and `uv run ruff format --check .` pass with zero warnings.
 - [ ] **QA Deliverables:** Executable QA script (`scripts/qa_*.py`) exists, runs successfully, and demonstrates both positive and negative cases.
 - [ ] **Manual UI QA:** If the PR changes a browser-visible surface, the description has start command, click path, expected screen result, and (when needed) a synthetic seed the PM can load. Otherwise it states UI QA is not applicable.
 
 ### 3. Automated Review Gates
 - **GitHub Actions CI (`.github/workflows/ci.yml`):** Automatically executes linting, formatting check, and the 90% coverage test gate on all PRs and pushes to `main` (no mutmut on PRs).
-- **Mutation Nightly (`.github/workflows/mutation-nightly.yml`):** Full allowlist mutation + score gate on `main` (cron, path-filtered pushes, manual dispatch).
+- **Mutation Nightly (`.github/workflows/mutation-nightly.yml`):** Runs on `[self-hosted, watchtower]`. Path-filtered **diff** on `main` pushes; **weekly** full-allowlist cron + `workflow_dispatch` full; score gate. Not a PR required check.
 - **Agent Review Workflow (`.github/workflows/agent-review.yml`):** Automatically executes static invariant scans via `scripts/agent_review.py` and provides automated critique.
 
 ---
@@ -177,7 +177,7 @@ The prior Dual-Tier path (cloud orchestrator plans only; local `qwen36-coder` / 
 ## Troubleshooting & CI/CD Runbooks (For Future Agents)
 
 ### Mutation Testing (`mutmut`) Anomalies
-* **PR vs nightly:** Mutation is **not** a PR required check. Failures belong to `Mutation Nightly` on `main`. Do not re-add a blocking `mutation:` job to `ci.yml` without an explicit product decision.
+* **PR vs Watchtower mutation:** Mutation is **not** a PR required check. Failures belong to `Mutation Nightly` on `main` (`[self-hosted, watchtower]`). Do not re-add a blocking `mutation:` job to `ci.yml` or move it back to daily `ubuntu-latest` without an explicit product decision.
 * **`no_tests` (🫥) is a hard fail:** Untested / dead code on allowlisted modules fails `--max-no-tests 0`. Delete dead helpers or add assertion-heavy tests. Do **not** "fix" this by mutating presentation code or faking stats.
 * **Wrong score denominator:** Never use `killed/total`. `total` includes `no_tests` and skips. Use classic `killed/(killed+survived)` via `scripts/check_mutation_score.py`.
 * **Module Import Crashes (Exit Code 4):** `mutmut` isolates files in `mutants/`. Always keep `source_paths = ["app"]` and inject `only_mutate` via `scripts/run_mutation_on_diff.py`. Never point `source_paths` at a single file.
