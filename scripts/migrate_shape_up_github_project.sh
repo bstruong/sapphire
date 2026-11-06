@@ -193,7 +193,7 @@ add_item "Dashboard refresh (Modern UI/UX)" "Shipped — stacked under PR #61 / 
 add_item "Chase credit card adapter" "Shipped — PR #61. Redacted PDF fixture + exclusive chase_credit_card matcher." "Shipped" "Small Batch" "docs/specs/pitch_chase_credit_card.md"
 add_item "Schwab checking (Investor Checking) adapter" "Shipped — PR #62. Checking adapter + DB isolation + liquid/RTA + money-debug." "Shipped" "Small Batch" "docs/specs/pitch_schwab_checking.md"
 add_item "History charts (balances + categories)" "Shaped. Overview History: closing balances over periods + category income/spend by month. Pitch + wireframe ready to bet." "Shaped" "Small Batch" "docs/specs/pitch_history_charts.md"
-add_item "CI reliability (un-crawl + Watchtower mutation)" "Shaped. Option B: slim PR CI (Playwright cache + docs path skip) + redraw mutation to self-hosted Watchtower (homelab #33 Option-1). Separate from History charts. Mutation kept off PR path." "Shaped" "Small Batch" "docs/specs/pitch_ci_reliability.md"
+add_item "CI reliability (un-crawl + Watchtower mutation)" "Shipped — Track 1 PR CI slim + Track 2/3 Watchtower mutation (diff/critical-only; host Postgres circuit breaker). Separate from History charts. Mutation stays off PR path." "Shipped" "Small Batch" "docs/specs/pitch_ci_reliability.md"
 add_item "Additional institution adapters" "Beyond locked stack. SFFCU + Schwab savings/multi-product still raw." "Raw" "n/a" ""
 add_item "Synthetic PDF fixtures for layout-hard statements" "Beyond JSON token fixtures." "Raw" "n/a" ""
 add_item "Grafana Tempo / Prometheus / Loki dashboards" "Depends on Watchtower pitch." "Raw" "n/a" ""

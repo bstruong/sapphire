@@ -13,6 +13,7 @@ from app.models.canonical import (
     CanonicalTransaction,
     CreditCardSummary,
     DepositorySummary,
+    Holding,
 )
 from app.models.enums import AccountDomain, TransactionCategory
 from app.models.exceptions import InvariantError, TokenError
@@ -20,6 +21,7 @@ from app.pipeline.validator import (
     validate_brokerage_reconciliation,
     validate_credit_card_reconciliation,
     validate_depository_reconciliation,
+    validate_holdings_valuation,
     validate_universal_reconciliation,
 )
 
@@ -690,3 +692,102 @@ class TestBrokerageReconciliation:
             match=r"^Portfolio bridge is present but contains null components\. All components must be signed cents\.$",
         ):
             validate_brokerage_reconciliation(stmt, summary, [])
+
+
+def _holding(
+    as_of: datetime.date,
+    market_value_cents: int,
+    *,
+    statement_id=None,
+) -> Holding:
+    return Holding(
+        statement_id=statement_id or uuid4(),
+        as_of_date=as_of,
+        symbol="SYN",
+        description="SYNTHETIC Equity",
+        quantity_nanos=1_000_000_000,
+        market_value_cents=market_value_cents,
+    )
+
+
+class TestHoldingsValuation:
+    """Kill validate_holdings_valuation mutants (critical-only 100% gate)."""
+
+    _start = datetime.date(2025, 8, 1)
+    _end = datetime.date(2025, 8, 31)
+
+    def test_empty_holdings_zero_stated_passes(self) -> None:
+        validate_holdings_valuation([], 0, self._start, self._end)
+
+    def test_empty_holdings_nonzero_stated_fails(self) -> None:
+        with pytest.raises(InvariantError, match="Holdings valuation mismatch"):
+            validate_holdings_valuation([], 1, self._start, self._end)
+
+    def test_as_of_on_period_start_boundary_passes(self) -> None:
+        # Kills `<` → `<=` on period_start (inclusive start must succeed).
+        validate_holdings_valuation(
+            [_holding(self._start, 100)],
+            100,
+            self._start,
+            self._end,
+        )
+
+    def test_as_of_on_period_end_boundary_passes(self) -> None:
+        # Kills `>` → `>=` on period_end (inclusive end must succeed).
+        validate_holdings_valuation(
+            [_holding(self._end, 100)],
+            100,
+            self._start,
+            self._end,
+        )
+
+    def test_as_of_day_before_start_fails(self) -> None:
+        # Exact prefix kills string mutants (XX…XX / case flips) on the message.
+        with pytest.raises(
+            InvariantError,
+            match=r"^Holding as_of_date 2025-07-31 is outside the statement period\.$",
+        ):
+            validate_holdings_valuation(
+                [_holding(datetime.date(2025, 7, 31), 100)],
+                100,
+                self._start,
+                self._end,
+            )
+
+    def test_as_of_day_after_end_fails(self) -> None:
+        with pytest.raises(
+            InvariantError,
+            match=r"^Holding as_of_date 2025-09-01 is outside the statement period\.$",
+        ):
+            validate_holdings_valuation(
+                [_holding(datetime.date(2025, 9, 1), 100)],
+                100,
+                self._start,
+                self._end,
+            )
+
+    def test_sum_of_multiple_holdings_matches(self) -> None:
+        # Kills `+=` → `-=` and related arithmetic survivors.
+        holdings = [
+            _holding(datetime.date(2025, 8, 15), 100_000),
+            _holding(datetime.date(2025, 8, 15), 25_050),
+        ]
+        validate_holdings_valuation(holdings, 125_050, self._start, self._end)
+
+    def test_sum_mismatch_fails(self) -> None:
+        holdings = [_holding(datetime.date(2025, 8, 15), 100)]
+        with pytest.raises(InvariantError, match="Holdings valuation mismatch"):
+            validate_holdings_valuation(holdings, 99, self._start, self._end)
+
+    def test_or_not_and_for_out_of_range(self) -> None:
+        # Date before start makes only the left clause true; `or`→`and` would miss it.
+        with pytest.raises(
+            InvariantError,
+            match=r"^Holding as_of_date 2025-07-01 is outside the statement period\.$",
+        ):
+            validate_holdings_valuation(
+                [_holding(datetime.date(2025, 7, 1), 50)],
+                50,
+                self._start,
+                self._end,
+            )
