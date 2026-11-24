@@ -9,6 +9,11 @@ Verifies the SAPPHIRE Vault interface to JARVIS
   4. Intentional negative failure cases (unreachable host, invalid model, empty payloads).
   5. Strict exception taxonomy (InferenceError -> PipelineError).
 
+Fail-soft contract:
+  - Endpoint **down**: skip live checks, still assert offline taxonomy → exit 0.
+  - Endpoint **up** + any contract violation → exit non-zero.
+  - Endpoint **up** + all checks pass → exit 0.
+
 Usage:
     uv run python scripts/qa_watchtower_inference.py
 """
@@ -37,6 +42,7 @@ class QAReport:
     def __init__(self) -> None:
         self.passed: list[str] = []
         self.failed: list[str] = []
+        self.skipped: list[str] = []
 
     def record(self, name: str, ok: bool, detail: str = "") -> None:
         if ok:
@@ -46,16 +52,32 @@ class QAReport:
             self.failed.append(name)
             print(f"  [FAIL] {name}" + (f": {detail}" if detail else ""))
 
-    def summary(self) -> bool:
-        total = len(self.passed) + len(self.failed)
+    def skip(self, name: str, detail: str = "") -> None:
+        self.skipped.append(name)
+        print(f"  [SKIP] {name}" + (f": {detail}" if detail else ""))
+
+    def summary(self, *, endpoint_online: bool) -> bool:
+        total = len(self.passed) + len(self.failed) + len(self.skipped)
         print(f"\n{'=' * 65}")
-        print(f"QA Summary: {len(self.passed)}/{total} passed")
+        print(
+            f"QA Summary: {len(self.passed)} passed, "
+            f"{len(self.failed)} failed, {len(self.skipped)} skipped "
+            f"(of {total})"
+        )
+        if not endpoint_online:
+            print(
+                "Endpoint offline — fail-soft mode "
+                "(live checks skipped; offline contracts still enforced)."
+            )
         if self.failed:
             print(f"Failed checks ({len(self.failed)}):")
             for name in self.failed:
                 print(f"  - {name}")
             return False
-        print("All Watchtower inference checks passed!")
+        if endpoint_online:
+            print("All Watchtower inference checks passed!")
+        else:
+            print("Offline contract checks passed (fail-soft).")
         return True
 
 
@@ -78,11 +100,17 @@ def main() -> int:
     print("-" * 65)
 
     is_avail = client.is_available()
-    report.record(
-        "Watchtower inference endpoint is reachable",
-        is_avail,
-        f"url={client.base_url}",
-    )
+    if is_avail:
+        report.record(
+            "Watchtower inference endpoint is reachable",
+            True,
+            f"url={client.base_url}",
+        )
+    else:
+        report.skip(
+            "Watchtower inference endpoint is reachable",
+            f"offline url={client.base_url} (fail-soft)",
+        )
 
     models: list[str] = []
     if is_avail:
@@ -102,7 +130,7 @@ def main() -> int:
         except Exception as exc:  # noqa: BLE001
             report.record("Model discovery succeeded", False, str(exc))
     else:
-        report.record("Model discovery skipped (endpoint offline)", False)
+        report.skip("Model discovery", "endpoint offline")
 
     # ---------------------------------------------------------
     # Feature 2: Vault Local Model Completion & Extraction
@@ -137,8 +165,8 @@ def main() -> int:
         except Exception as exc:  # noqa: BLE001
             report.record("Structured JSON extraction parsed cleanly", False, str(exc))
     else:
-        report.record("Completion skipped (endpoint offline)", False)
-        report.record("Structured extraction skipped (endpoint offline)", False)
+        report.skip("Completion", "endpoint offline")
+        report.skip("Structured extraction", "endpoint offline")
 
     # ---------------------------------------------------------
     # Feature 3: Privacy & Zero-PII Logging Invariant
@@ -170,10 +198,16 @@ def main() -> int:
             "Log records do NOT leak SSN tokens",
             sensitive_ssn not in log_content,
         )
-        report.record(
-            "Log records contain operational telemetry (model/status)",
-            "model" in log_content or not is_avail,
-        )
+        if is_avail:
+            report.record(
+                "Log records contain operational telemetry (model/status)",
+                "model" in log_content,
+            )
+        else:
+            report.skip(
+                "Log telemetry while endpoint online",
+                "endpoint offline (no live completion logged)",
+            )
     finally:
         inf_logger.removeHandler(handler)
 
@@ -183,7 +217,7 @@ def main() -> int:
     print("\nFeature 4: Fail-Loud Contract Enforcement (Negative Verification)")
     print("-" * 65)
 
-    # 4.1 Unreachable host / port
+    # 4.1 Unreachable host / port (always — offline-safe)
     broken_client = VaultInferenceClient(
         base_url="http://192.168.1.92:9999/v1", timeout=1.0
     )
@@ -221,9 +255,9 @@ def main() -> int:
                 f"wrong exception: {type(exc).__name__}",
             )
     else:
-        report.record("Nonexistent model test skipped (endpoint offline)", False)
+        report.skip("Nonexistent model rejection", "endpoint offline")
 
-    # 4.3 Empty input payloads
+    # 4.3 Empty input payloads (always — offline-safe)
     try:
         client.chat_completion([])
         report.record("Empty messages rejected loud", False)
@@ -261,7 +295,7 @@ def main() -> int:
         issubclass(InferenceContractError, InferenceError),
     )
 
-    return 0 if report.summary() else 1
+    return 0 if report.summary(endpoint_online=is_avail) else 1
 
 
 if __name__ == "__main__":

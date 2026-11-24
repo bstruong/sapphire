@@ -34,6 +34,8 @@ Two different “local model” questions — keep them separate:
 
 Planning uses Shape Up (`ARCH_PLAN.md`, `docs/specs/`). User-visible pitches must include shaping-phase wireframes under `docs/specs/visuals/`. Board sync: owner runs `gh auth refresh -s project,read:project` then `bash scripts/migrate_shape_up_github_project.sh` (no dedicated agent PAT).
 
+**Interview / hiring demo:** [docs/demo.md](docs/demo.md) — a 5-minute script (fail-loud, integer cents, zero-PII egress).
+
 ## Quick Start & Verification
 
 **1. Install Dependencies**
@@ -52,11 +54,60 @@ uv run ruff check .
 uv run ruff format .
 ```
 
-**4. Dashboard (optional)**
+**4. Run the dashboard (seed + health)**
+
+Copy env defaults from [`.env.example`](.env.example) (dogfood DB is `…/sapphire`, never `sapphire_test`):
+
 ```bash
+export DATABASE_URL=postgresql://postgres:sapphire@localhost:54329/sapphire
+uv run python scripts/seed_dashboard.py
 uv run uvicorn app.api.app:app --host 127.0.0.1 --port 8000
 ```
+
+In another terminal:
+
+```bash
+curl -sS http://127.0.0.1:8000/api/v1/health
+```
+
 Open `http://127.0.0.1:8000/dashboard`. Baseline wireframe: `docs/specs/visuals/dashboard_baseline_wireframe.html`.
+
+**5. Docker Compose (optional)**
+
+Postgres + Vault with a healthcheck on `/api/v1/health`:
+
+```bash
+docker compose up --build
+curl -sS http://127.0.0.1:8000/api/v1/health
+```
+
+See [`Dockerfile`](Dockerfile) and [`compose.yaml`](compose.yaml). Compose sets `DATABASE_URL` to the `db` service; host-mapped Postgres is `localhost:54329` to match `.env.example`.
+
+## Local inference contract (Vault → JARVIS)
+
+PII-touching parse/strip stays inside the Vault trust boundary via [`VaultInferenceClient`](app/core/inference.py). Live verification:
+
+```bash
+uv run python scripts/qa_watchtower_inference.py
+```
+
+| Behavior | Exit |
+|----------|------|
+| Endpoint **down** | **fail-soft**: skips live checks, still asserts offline contract taxonomy → exit **0** |
+| Endpoint **up** + contract violation | Exit **non-zero** |
+| Endpoint **up** + all checks pass | Exit **0** |
+
+Environment (see [`.env.example`](.env.example)):
+
+| Variable | Role | Default |
+|----------|------|---------|
+| `VAULT_INFERENCE_URL` | OpenAI-compatible base URL (`…/v1`) | `http://ai.watchtower.local/v1` |
+| `OPENAI_BASE_URL` / `LOCAL_LLM_URL` | Accepted aliases for the URL | — |
+| `VAULT_INFERENCE_MODEL` | Default completion model | `qwen36-coder-hybrid` |
+| `LOCAL_LLM_MODEL` | Alias for the model | — |
+| `VAULT_INFERENCE_TIMEOUT` | Seconds | `30.0` |
+
+Prefer Traefik ingress or loopback hostPort on the Watchtower node—not a LAN `:8080` hostPort. Exclusive GPU work uses `homelab-k3s/scripts/jarvis-lease.sh`. Do **not** wire JARVIS into ingest in this Quick Start; the client is the contract surface only.
 
 ## Troubleshooting & Agent Runbooks
 
