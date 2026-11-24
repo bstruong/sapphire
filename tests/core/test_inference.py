@@ -15,7 +15,7 @@ from urllib.error import HTTPError, URLError
 
 import pytest
 
-from app.core.inference import VaultInferenceClient
+from app.core.inference import STRIP_PII_SYSTEM_PROMPT, VaultInferenceClient
 from app.core.telemetry import JSONFormatter
 from app.models.exceptions import (
     InferenceConnectionError,
@@ -289,6 +289,75 @@ class TestVaultInferenceChat:
 
 
 class TestVaultInferencePII:
+    def test_strip_pii_prompt_keep_deny_contract(self) -> None:
+        """Policy kernel: keep Zelle/payee; redact SSN/account/check#; holder once."""
+        prompt = STRIP_PII_SYSTEM_PROMPT
+        # KEEP signal
+        assert "Zelle" in prompt
+        assert "payee" in prompt.lower()
+        assert "activity-line" in prompt.lower() or "activity line" in prompt.lower()
+        # DENY secrets
+        assert "[REDACTED_SSN]" in prompt
+        assert "[REDACTED_ACCOUNT]" in prompt
+        assert "[REDACTED_CHECK]" in prompt
+        assert "check numbers" in prompt.lower() or "check number" in prompt.lower()
+        assert "[REDACTED_ADDRESS]" in prompt
+        assert "[REDACTED_PHONE]" in prompt
+        assert "[REDACTED_EMAIL]" in prompt
+        # Holder name once — not blanket personal-name erasure
+        assert "ONCE" in prompt
+        assert "Account Holder" in prompt
+        assert "personal names" not in prompt.lower()
+        # Prefer keep when unsure
+        assert "prefer KEEP" in prompt or "prefer keep" in prompt.lower()
+
+    @patch("app.core.inference.urlopen")
+    def test_strip_pii_sends_keep_deny_system_prompt(
+        self, mock_urlopen: MagicMock
+    ) -> None:
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps(
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": (
+                                "Account Holder: Jane Doe once\n"
+                                "Zelle to Alex Rivera -50.00 "
+                                "acct [REDACTED_ACCOUNT] SSN [REDACTED_SSN] "
+                                "Check [REDACTED_CHECK]"
+                            ),
+                        }
+                    }
+                ]
+            }
+        ).encode("utf-8")
+        mock_response.__enter__.return_value = mock_response
+        mock_urlopen.return_value = mock_response
+
+        client = VaultInferenceClient()
+        synthetic = (
+            "Account Holder: Jane Doe\n"
+            "Prepared for: Jane Doe\n"
+            "Zelle payment to Alex Rivera 50.00 "
+            "SSN 123-45-6789 account 1234567890123456 Check #4521"
+        )
+        stripped = client.strip_pii(synthetic)
+        assert "Zelle" in stripped or "Alex" in stripped
+        assert "[REDACTED_ACCOUNT]" in stripped
+        assert "[REDACTED_SSN]" in stripped
+        assert "[REDACTED_CHECK]" in stripped
+
+        request = mock_urlopen.call_args[0][0]
+        body = json.loads(request.data.decode("utf-8"))
+        system_msgs = [
+            m["content"] for m in body["messages"] if m.get("role") == "system"
+        ]
+        assert system_msgs == [STRIP_PII_SYSTEM_PROMPT]
+        assert "Zelle" in system_msgs[0]
+        assert "[REDACTED_CHECK]" in system_msgs[0]
+
     @patch("app.core.inference.urlopen")
     def test_strip_pii_happy_path(self, mock_urlopen: MagicMock) -> None:
         mock_response = MagicMock()
@@ -317,6 +386,24 @@ class TestVaultInferencePII:
         client = VaultInferenceClient()
         with pytest.raises(ValueError, match="text must not be empty"):
             client.strip_pii("")
+
+    def test_strip_pii_whitespace_only_raises(self) -> None:
+        client = VaultInferenceClient()
+        with pytest.raises(ValueError, match="text must not be empty"):
+            client.strip_pii("   \n\t  ")
+
+    def test_ingest_does_not_call_strip_pii_before_parse(self) -> None:
+        """No full-LLM strip before adapter parse (locked Q7)."""
+        from pathlib import Path
+
+        ingest_src = (
+            Path(__file__).resolve().parents[2]
+            / "app"
+            / "pipeline"
+            / "ingest_service.py"
+        ).read_text(encoding="utf-8")
+        assert "strip_pii" not in ingest_src
+        assert "parse_canonical" in ingest_src
 
     @patch("app.core.inference.urlopen")
     def test_extract_structured_happy_path(self, mock_urlopen: MagicMock) -> None:

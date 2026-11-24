@@ -44,6 +44,30 @@ _DEFAULT_TIMEOUT_SECONDS = 30.0
 
 _JSON_FENCE_PATTERN = re.compile(r"```(?:json)?\s*([\s\S]*?)\s*```")
 
+# Sanitize-role policy kernel (P1). Used for egress / optional assist only —
+# never as a full-LLM strip before adapter parse_canonical.
+STRIP_PII_SYSTEM_PROMPT = (
+    "You are a local financial redaction model operating inside a strict Vault boundary. "
+    "Sanitize the text by replacing DENY-list identifiers with tokens; KEEP transaction signal. "
+    "DENY — replace with tokens: "
+    "SSN/ITIN → [REDACTED_SSN]; "
+    "full account/routing/card PAN digits → [REDACTED_ACCOUNT]; "
+    "street addresses → [REDACTED_ADDRESS]; "
+    "telephone numbers → [REDACTED_PHONE]; "
+    "emails → [REDACTED_EMAIL]; "
+    "check numbers and confirmation IDs → [REDACTED_CHECK]; "
+    "account-holder legal name in header chrome may appear ONCE "
+    "(Account Holder / Prepared for); any repeated holder-name spam → [REDACTED_NAME]. "
+    "KEEP unaltered: dates, amounts, balances, table structure, institution names, "
+    "activity-line descriptions, and payee/merchant/memo text including Zelle and "
+    "person-shaped payees printed on activity lines. "
+    "If unsure whether a name is header identity vs payee: prefer KEEP on activity lines; "
+    "redact only clearly labeled Account Holder / Prepared for / Address chrome "
+    "(except the single show-once holder name). "
+    "Do not invent merchants. Do not erase payees to be helpful. "
+    "Return only the sanitized text."
+)
+
 
 class VaultInferenceClient:
     """Client for JARVIS (Watchtower shared inference) within the Vault trust boundary."""
@@ -316,30 +340,24 @@ class VaultInferenceClient:
         return str(content)
 
     def strip_pii(self, text: str) -> str:
-        """Strip PII from raw statement text within the Vault trust boundary.
+        """Sanitize text inside the Vault (sanitize role / optional assist).
 
-        Uses the local Watchtower model to redact identifiers (names, SSNs,
-        account numbers, addresses) prior to any optional aggregate extraction.
+        Redacts identity secrets (SSN, full account, check #, address, phone,
+        email; holder name once in chrome) while keeping payee/Zelle/activity
+        signal. Not a pre-parse gate — adapters parse raw Vault PDFs without
+        a full-LLM strip first.
 
         Args:
-            text: Raw statement text.
+            text: Statement or page text to sanitize.
 
         Returns:
-            PII-redacted text.
+            Text with DENY-list identifiers tokenized; KEEP-list signal intact.
         """
         stripped = text.strip() if text else ""
         if not stripped:
             raise ValueError("text must not be empty.")
 
-        system_prompt = (
-            "You are a local financial redaction model operating inside a strict Vault boundary. "
-            "Your task is to sanitize the text by replacing personal identifiers (SSNs, full account numbers, "
-            "personal names, physical addresses, telephone numbers, emails) with generic tokens like "
-            "[REDACTED_SSN], [REDACTED_ACCOUNT], [REDACTED_NAME], [REDACTED_ADDRESS]. "
-            "Preserve financial figures, dates, table structures, and transaction descriptions unaltered. "
-            "Return only the sanitized text."
-        )
-        return self.complete(stripped, system_prompt=system_prompt)
+        return self.complete(stripped, system_prompt=STRIP_PII_SYSTEM_PROMPT)
 
     def extract_structured(
         self,
