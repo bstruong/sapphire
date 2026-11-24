@@ -126,12 +126,14 @@ def test_mutation_self_hosted_policy(nightly: str) -> None:
 def test_docs_path_e2e_skip(ci: str) -> None:
     print_header("3. Docs / markdown path E2E skip present in ci.yml (Track 1)")
     assert_condition(
-        "dorny/paths-filter@v3 drives needs_e2e",
-        "dorny/paths-filter@v3" in ci and "needs_e2e:" in ci,
+        "dorny/paths-filter@v3 drives needs_tests and needs_e2e",
+        "dorny/paths-filter@v3" in ci and "needs_tests:" in ci and "needs_e2e:" in ci,
     )
     assert_condition(
-        "docs/markdown-only path skips E2E",
-        "--ignore=tests/test_e2e_dashboard.py" in ci and "needs_e2e != 'true'" in ci,
+        "docs/non-UI path can skip E2E (and non-code can skip pytest)",
+        "--ignore=tests/test_e2e_dashboard.py" in ci
+        and "needs_e2e != 'true'" in ci
+        and "needs_tests != 'true'" in ci,
     )
 
 

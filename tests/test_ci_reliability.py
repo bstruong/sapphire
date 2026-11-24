@@ -90,6 +90,7 @@ def test_mutation_uses_host_postgres_circuit_breaker(mutation_text: str) -> None
 def test_docs_path_e2e_skip_present_in_ci(ci_text: str) -> None:
     assert "dorny/paths-filter@v3" in ci_text
     assert "needs_e2e:" in ci_text
+    assert "needs_tests:" in ci_text
     assert "--ignore=tests/test_e2e_dashboard.py" in ci_text
 
 

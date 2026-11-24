@@ -25,7 +25,7 @@ jobs:
       with:
         python-version: '3.12'
     - name: Install dependencies
-      run: uv sync
+      run: uv sync --frozen
     - name: Check linting (Ruff)
       run: uv run ruff check .
     - name: Check formatting (Ruff)
@@ -33,6 +33,8 @@ jobs:
   test:
     name: Test Coverage Gate
     runs-on: ubuntu-latest
+    # Postgres service always starts (~20s). Skipping the job on docs-only
+    # paths would leave a required check as "skipped" and block merges.
     services:
       postgres:
         image: postgres:15
@@ -47,31 +49,53 @@ jobs:
     steps:
     - name: Check out repository
       uses: actions/checkout@v4
-    # Docs/specs / markdown-only PRs skip Playwright + E2E; app-touching paths keep full suite.
-    - name: Detect app-touching paths
+    # Two filters:
+    #   needs_tests — run pytest + ≥90% coverage (app/tests/python scripts/lockfile/CI).
+    #   needs_e2e   — install Playwright + include browser E2E (UI surface only).
+    # Docs, .cursor/, and non-Python scripts (e.g. check-diff-size.sh) skip both.
+    - name: Detect test and E2E paths
       uses: dorny/paths-filter@v3
       id: filter
       with:
         filters: |
-          needs_e2e:
+          needs_tests:
             - 'app/**'
             - 'tests/**'
-            - 'scripts/**'
+            - 'scripts/**/*.py'
             - 'pyproject.toml'
             - 'uv.lock'
             - '.github/workflows/**'
-            - '**/*.py'
+          needs_e2e:
+            - 'app/api/**'
+            - 'app/routers/**'
+            - 'app/templates/**'
+            - 'app/static/**'
+            - 'app/presentation/**'
+            - 'app/middleware/**'
+            - 'tests/test_e2e_dashboard.py'
+            - 'pyproject.toml'
+            - 'uv.lock'
+            - '.github/workflows/ci.yml'
+    - name: Skip notice (no test-relevant paths)
+      if: steps.filter.outputs.needs_tests != 'true'
+      run: |
+        echo "No app/tests/python-script/lockfile/workflow paths changed."
+        echo "Skipping pytest, coverage gate, and Playwright (lint + agent-review still run)."
     - name: Set up uv
+      if: steps.filter.outputs.needs_tests == 'true'
       uses: astral-sh/setup-uv@v5
       with:
         enable-cache: true
     - name: Set up Python
+      if: steps.filter.outputs.needs_tests == 'true'
       uses: actions/setup-python@v5
       with:
         python-version: '3.12'
     - name: Install dependencies
-      run: uv sync
+      if: steps.filter.outputs.needs_tests == 'true'
+      run: uv sync --frozen
     - name: Initialize Test Database Schema
+      if: steps.filter.outputs.needs_tests == 'true'
       env:
         TEST_DATABASE_URL: postgresql://postgres:sapphire@localhost:54329/sapphire_test
         DATABASE_URL: postgresql://postgres:sapphire@localhost:54329/sapphire_test
@@ -89,27 +113,28 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/.cache/ms-playwright
-        key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
+        key: playwright-chromium-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
         restore-keys: |
+          playwright-chromium-${{ runner.os }}-${{ runner.arch }}-
           playwright-${{ runner.os }}-${{ runner.arch }}-
-    - name: Install Playwright browsers (cache miss)
+    - name: Install Playwright Chromium (cache miss)
       if: steps.filter.outputs.needs_e2e == 'true' && steps.playwright-cache.outputs.cache-hit != 'true'
-      run: uv run playwright install --with-deps
+      run: uv run playwright install --with-deps chromium
     - name: Install Playwright OS deps (cache hit)
       if: steps.filter.outputs.needs_e2e == 'true' && steps.playwright-cache.outputs.cache-hit == 'true'
-      run: uv run playwright install-deps
+      run: uv run playwright install-deps chromium
     - name: Run test suite with E2E and coverage gate (>90%)
-      if: steps.filter.outputs.needs_e2e == 'true'
+      if: steps.filter.outputs.needs_tests == 'true' && steps.filter.outputs.needs_e2e == 'true'
       env:
         TEST_DATABASE_URL: postgresql://postgres:sapphire@localhost:54329/sapphire_test
         # Pytest session fixture also forces DATABASE_URL → sapphire_test.
         DATABASE_URL: postgresql://postgres:sapphire@localhost:54329/sapphire_test
-      run: uv run pytest --cov=app --cov-fail-under=90 -v
-    - name: Run test suite without E2E (docs/markdown-only) with coverage gate (>90%)
-      if: steps.filter.outputs.needs_e2e != 'true'
+      run: uv run pytest --cov=app --cov-fail-under=90 -q
+    - name: Run test suite without E2E with coverage gate (>90%)
+      if: steps.filter.outputs.needs_tests == 'true' && steps.filter.outputs.needs_e2e != 'true'
       env:
         TEST_DATABASE_URL: postgresql://postgres:sapphire@localhost:54329/sapphire_test
         DATABASE_URL: postgresql://postgres:sapphire@localhost:54329/sapphire_test
-      run: uv run pytest --cov=app --cov-fail-under=90 -v --ignore=tests/test_e2e_dashboard.py
+      run: uv run pytest --cov=app --cov-fail-under=90 -q --ignore=tests/test_e2e_dashboard.py
   # Mutation testing moved to .github/workflows/mutation-nightly.yml
   # (schedule + main path pushes + workflow_dispatch). PRs are not blocked by mutmut.
