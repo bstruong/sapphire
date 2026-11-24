@@ -39,3 +39,4 @@ Shape Up intentionally avoids high-fidelity pixel comps as a gating artifact. Pr
 | [history_charts_wireframe.html](history_charts_wireframe.html) | **Built** — Overview History: closing balances over periods + category income/spend by month ([pitch](../pitch_history_charts.md)) |
 | [statement_history_wireframe.html](statement_history_wireframe.html) | **Built** — Full statement history from Recent → View all (account/year filters, Open → ledger) |
 | [category_spend_pie_wireframe.html](category_spend_pie_wireframe.html) | **Proposed** — Overview History third block: spend-by-category pie, calendar month/year primary, Uncategorized, integer cents ([pitch](../pitch_category_spend_pie.md)) |
+| [bulk_suggest_labels_wireframe.html](bulk_suggest_labels_wireframe.html) | **Proposed** — Ledger bulk suggest: group-by-payee Accept/Reject, opaque Schwab EW strip, rules vs Vault, JARVIS downtime ([pitch](../pitch_bulk_suggest_labels.md)) |

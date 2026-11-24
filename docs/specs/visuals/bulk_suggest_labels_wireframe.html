@@ -1,0 +1,1131 @@
+<!DOCTYPE html>
+<!--
+  SAPPHIRE — Bulk suggest labels (PROPOSED fat-marker wireframe)
+  Plan: docs/bulk-suggest-labels-plan.md (ACRA-24 / ACRA-25 · B0)
+  Placement: Ledger — Suggest panel (group-by-payee Accept/Reject).
+  Chrome: matches live dashboard.html + sapphire.css (Vault dark).
+  Synthetic only (*0000 / SYNTHETIC). No product code. Integer cents display.
+-->
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SAPPHIRE — Bulk suggest labels (proposed)</title>
+  <style>
+    :root {
+      --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+      --radius-lg: 20px;
+      --radius: 14px;
+      --radius-sm: 10px;
+      --sidebar: 264px;
+      --ease: cubic-bezier(.2, .7, .2, 1);
+      --sidebar-bg: #091225;
+      --sidebar-surface: rgba(255, 255, 255, .055);
+      --sidebar-border: rgba(255, 255, 255, .08);
+      --sidebar-text: #f7f9ff;
+      --sidebar-muted: #8e9ab5;
+      --marker: #f5b84a;
+      --warn: #f5b84a;
+      --warn-soft: rgba(245, 184, 74, .12);
+    }
+    [data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #080d17;
+      --surface: #111827;
+      --surface-2: #172132;
+      --border: #29364b;
+      --border-soft: #1c2739;
+      --text: #edf2ff;
+      --text-2: #9eabc1;
+      --text-3: #68758d;
+      --accent: #6f8cff;
+      --accent-2: #9aafff;
+      --accent-soft: rgba(91, 140, 255, .12);
+      --on-accent: #ffffff;
+      --pos: #3ddc97;
+      --pos-soft: rgba(61, 220, 151, .12);
+      --neg: #ff6b7a;
+      --neg-soft: rgba(255, 107, 122, .12);
+      --shadow: 0 1px 0 rgba(255, 255, 255, .04) inset, 0 16px 40px rgba(0, 0, 0, .28);
+      --shadow-hover: 0 22px 54px rgba(0, 0, 0, .42);
+    }
+    [data-theme="light"] {
+      color-scheme: light;
+      --bg: #f3f6fc;
+      --surface: #ffffff;
+      --surface-2: #f5f7fc;
+      --border: #dce3f0;
+      --border-soft: #e9edf5;
+      --text: #11182b;
+      --text-2: #59657c;
+      --text-3: #929db1;
+      --accent: #4967f2;
+      --accent-2: #3855dc;
+      --accent-soft: rgba(73, 103, 242, .10);
+      --on-accent: #ffffff;
+      --pos: #0f9d63;
+      --pos-soft: rgba(15, 157, 99, .10);
+      --neg: #d93a4c;
+      --neg-soft: rgba(217, 58, 76, .08);
+      --shadow: 0 1px 2px rgba(17, 24, 43, .04), 0 14px 36px rgba(44, 60, 100, .08);
+      --shadow-hover: 0 20px 48px rgba(44, 60, 100, .13);
+      --warn-soft: rgba(180, 120, 20, .10);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: var(--font);
+      background:
+        radial-gradient(circle at 78% -10%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 32rem),
+        var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+    button, select { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    .num, .amount { font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+    .amount { text-align: right; white-space: nowrap; }
+    .muted { color: var(--text-2); }
+    .faint { color: var(--text-3); }
+    .pos { color: var(--pos); }
+    .neg { color: var(--neg); }
+    .strong { font-weight: 600; }
+    .sub { display: block; font-size: 12.5px; color: var(--text-2); }
+    .icon { width: 18px; height: 18px; flex: none; }
+    .sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+    .review-bar {
+      position: sticky; top: 0; z-index: 40;
+      display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px;
+      padding: 10px 18px;
+      background: #0c1220;
+      border-bottom: 1px solid var(--border);
+      font-size: 12.5px;
+    }
+    [data-theme="light"] .review-bar { background: #e8edf8; }
+    .review-bar strong {
+      text-transform: uppercase; letter-spacing: .06em; font-size: 11px; color: var(--marker);
+    }
+    .tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+    .tabs button {
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-2);
+      padding: 7px 12px;
+      border-radius: 999px;
+      font-size: 12.5px;
+      font-weight: 550;
+    }
+    .tabs button[aria-selected="true"] {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+      color: var(--text);
+    }
+    .review-note { color: var(--text-3); margin-left: auto; max-width: 44rem; }
+
+    .app { display: grid; grid-template-columns: var(--sidebar) 1fr; min-height: calc(100vh - 48px); }
+
+    .sidebar {
+      position: sticky; top: 48px; height: calc(100vh - 48px);
+      display: flex; flex-direction: column; gap: 24px;
+      padding: 24px 16px 18px;
+      border-right: 1px solid var(--sidebar-border);
+      background:
+        radial-gradient(circle at 15% 0%, rgba(99, 123, 255, .22), transparent 18rem),
+        var(--sidebar-bg);
+      color: var(--sidebar-text);
+      overflow: hidden;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; padding: 3px 10px 9px; }
+    .brand-mark {
+      width: 36px; height: 36px; border-radius: 11px;
+      display: grid; place-items: center; color: #fff;
+      background: linear-gradient(135deg, #8ba4ff, #506ff5 55%, #7b5de6);
+      box-shadow: 0 10px 24px rgba(79, 105, 245, .38), inset 0 1px 0 rgba(255, 255, 255, .35);
+    }
+    .brand-mark svg { width: 19px; height: 19px; }
+    .brand-name { color: var(--sidebar-text); font-weight: 720; letter-spacing: .16em; font-size: 13px; }
+
+    .nav { display: flex; flex-direction: column; gap: 2px; }
+    .nav-label {
+      font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+      color: var(--sidebar-muted); padding: 0 12px 7px;
+    }
+    .nav-label.spaced { margin-top: 14px; }
+    .nav button {
+      display: flex; align-items: center; gap: 10px;
+      width: 100%; padding: 10px 12px; border: 1px solid transparent; border-radius: var(--radius-sm);
+      background: transparent; color: var(--sidebar-muted); text-align: left;
+    }
+    .nav button[aria-current="page"] {
+      background: linear-gradient(90deg, rgba(100, 128, 255, .2), rgba(100, 128, 255, .08));
+      border-color: rgba(144, 166, 255, .15); color: var(--sidebar-text);
+      box-shadow: inset 3px 0 0 #7691ff;
+    }
+    .nav button[aria-current="page"] .icon { color: #9bafff; }
+
+    .vault-card {
+      margin-top: auto; padding: 14px; border-radius: var(--radius);
+      background: var(--sidebar-surface); border: 1px solid var(--sidebar-border); font-size: 12px;
+    }
+    .vault-card .row { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--pos); box-shadow: 0 0 0 4px var(--pos-soft); }
+    .dot-down { background: var(--neg); box-shadow: 0 0 0 4px var(--neg-soft); }
+    .vault-card ul { list-style: none; margin-top: 11px; display: grid; gap: 7px; color: var(--sidebar-muted); }
+    .vault-card li { display: flex; justify-content: space-between; }
+    .vault-card li span:last-child { color: var(--sidebar-text); }
+
+    .main { min-width: 0; }
+    .topbar {
+      position: sticky; top: 48px; z-index: 5;
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      min-height: 76px; padding: 12px 42px;
+      background: color-mix(in srgb, var(--bg) 84%, transparent);
+      backdrop-filter: blur(18px);
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .topbar-heading { display: grid; gap: 1px; }
+    .topbar-kicker {
+      color: var(--accent-2); font-size: 10px; font-weight: 700;
+      letter-spacing: .11em; text-transform: uppercase;
+    }
+    .topbar-title { font-size: 20px; font-weight: 680; letter-spacing: -.025em; color: var(--text); }
+    .topbar-actions { display: flex; align-items: center; gap: 10px; }
+    .content { width: 100%; max-width: 1360px; margin: 0 auto; padding: 34px 42px 72px; }
+    .view { display: grid; gap: 24px; }
+
+    .page-head h1 { font-size: clamp(24px, 2.4vw, 32px); font-weight: 720; letter-spacing: -.035em; }
+    .page-head p { font-size: 14px; color: var(--text-2); margin-top: 4px; }
+
+    .theme-toggle {
+      display: grid; place-items: center; width: 40px; height: 40px;
+      border-radius: 12px; border: 1px solid var(--border);
+      background: var(--surface); color: var(--text-2);
+    }
+    [data-theme="light"] .theme-toggle .icon-sun { display: none; }
+    [data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      height: 40px; padding: 0 17px; border-radius: 11px; border: 1px solid transparent;
+      font-weight: 620; font-size: 13.5px; white-space: nowrap;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 72%, #8a65ff));
+      color: var(--on-accent); box-shadow: 0 9px 22px -8px var(--accent);
+    }
+    .btn-ghost { background: var(--surface); border-color: var(--border); color: var(--text); }
+    .btn-danger {
+      background: var(--neg-soft); border-color: color-mix(in srgb, var(--neg) 40%, transparent);
+      color: var(--neg);
+    }
+    .btn-pos {
+      background: var(--pos-soft); border-color: color-mix(in srgb, var(--pos) 40%, transparent);
+      color: var(--pos);
+    }
+    .btn-link { background: none; border: 0; color: var(--accent-2); padding: 0; font-weight: 550; height: auto; }
+    .btn-link:hover { text-decoration: underline; }
+    .btn-sm { height: 32px; padding: 0 12px; font-size: 12.5px; border-radius: 8px; }
+    .btn:disabled, .btn[aria-disabled="true"] {
+      opacity: .45; cursor: not-allowed; box-shadow: none;
+    }
+
+    .card {
+      background: var(--surface); border: 1px solid var(--border-soft);
+      border-radius: var(--radius-lg); box-shadow: var(--shadow); overflow: hidden;
+    }
+    .card-head {
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+      padding: 21px 24px 0;
+    }
+    .card-head h2 { font-size: 16px; font-weight: 680; letter-spacing: -.01em; }
+    .card-head p { font-size: 12.5px; color: var(--text-2); margin-top: 2px; }
+    .card-body { padding: 16px 24px 22px; }
+    .eyebrow {
+      font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em;
+      color: var(--text-2); font-weight: 550;
+    }
+
+    .chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600;
+    }
+    .chip-pos { color: var(--pos); background: var(--pos-soft); }
+    .chip-neg { color: var(--neg); background: var(--neg-soft); }
+    .chip-neutral { color: var(--text-2); background: var(--surface-2); }
+    .chip-accent { color: var(--accent-2); background: var(--accent-soft); }
+    .chip-warn { color: var(--warn); background: var(--warn-soft); }
+    .chip-rule { color: #9ad0ff; background: rgba(90, 160, 255, .12); }
+    .chip-vault { color: #c9b3ff; background: rgba(150, 120, 255, .14); }
+
+    .field { display: grid; gap: 6px; }
+    .field label { font-size: 12.5px; color: var(--text-2); font-weight: 520; }
+    .select {
+      height: 36px; min-width: 148px; padding: 0 10px;
+      background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px;
+    }
+
+    .marker {
+      border-left: 3px solid var(--marker);
+      margin: 0 0 12px;
+      padding: 8px 12px;
+      background: rgba(245, 184, 74, .08);
+      color: var(--text-2);
+      font-size: 12.5px;
+      border-radius: 0 10px 10px 0;
+    }
+    .marker strong { color: var(--marker); text-transform: uppercase; letter-spacing: .04em; font-size: 11px; }
+
+    .alert {
+      display: flex; gap: 14px; align-items: flex-start;
+      padding: 16px 18px; border-radius: var(--radius);
+      background: var(--neg-soft); border: 1px solid color-mix(in srgb, var(--neg) 35%, transparent);
+    }
+    .alert.warn {
+      background: var(--warn-soft);
+      border-color: color-mix(in srgb, var(--warn) 40%, transparent);
+    }
+    .alert.info {
+      background: var(--accent-soft);
+      border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+    }
+    .alert .icon { width: 20px; height: 20px; margin-top: 1px; flex: none; }
+    .alert.danger .icon { color: var(--neg); }
+    .alert.warn .icon { color: var(--warn); }
+    .alert.info .icon { color: var(--accent-2); }
+    .alert h4 { font-size: 14px; font-weight: 620; }
+    .alert.danger h4 { color: var(--neg); }
+    .alert.warn h4 { color: var(--warn); }
+    .alert.info h4 { color: var(--accent-2); }
+    .alert code {
+      font-family: var(--mono); font-size: 12px;
+      background: var(--surface-2); padding: 1px 6px; border-radius: 6px; color: var(--text);
+    }
+    .alert p { color: var(--text-2); font-size: 13px; margin-top: 4px; }
+    .alert-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+
+    /* Scope chrome */
+    .scope-bar {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+      gap: 14px; padding: 16px 20px;
+      background: var(--surface-2); border: 1px solid var(--border-soft);
+      border-radius: var(--radius);
+    }
+    .scope-left { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+    .scope-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .scope-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+    .month-picker-trigger {
+      display: inline-flex; align-items: center; gap: 10px;
+      height: 44px; padding: 0 14px 0 12px;
+      border-radius: 12px; border: 1px solid var(--border);
+      background: var(--surface); color: var(--text);
+    }
+    .month-picker-trigger .cal-icon {
+      width: 34px; height: 34px; border-radius: 9px;
+      display: grid; place-items: center;
+      background: var(--accent-soft); color: var(--accent-2);
+    }
+    .month-picker-copy { text-align: left; line-height: 1.25; }
+    .month-picker-copy .primary {
+      display: block; font-weight: 650; font-size: 14px; letter-spacing: -.01em;
+    }
+    .month-picker-copy .hint {
+      display: block; font-size: 11.5px; color: var(--text-3); margin-top: 2px;
+    }
+
+    /* Opaque strip — loud, non-actionable for suggest */
+    .opaque-strip {
+      display: flex; gap: 14px; align-items: flex-start;
+      padding: 16px 18px;
+      border-radius: var(--radius);
+      background: color-mix(in srgb, var(--surface-2) 70%, #1a1520);
+      border: 1px dashed color-mix(in srgb, var(--warn) 55%, var(--border));
+    }
+    .opaque-strip .badge {
+      flex: none; min-width: 52px; height: 52px; border-radius: 14px;
+      display: grid; place-items: center;
+      background: var(--warn-soft); color: var(--warn);
+      font-weight: 720; font-size: 18px; font-variant-numeric: tabular-nums;
+    }
+    .opaque-strip h3 { font-size: 14.5px; font-weight: 650; letter-spacing: -.01em; }
+    .opaque-strip p { color: var(--text-2); font-size: 13px; margin-top: 4px; max-width: 52rem; }
+    .opaque-strip .hint-row {
+      display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 10px;
+    }
+
+    /* Section headers: Rules vs Vault */
+    .lane {
+      display: grid; gap: 12px;
+    }
+    .lane-head {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+      gap: 10px; padding: 4px 2px;
+    }
+    .lane-title {
+      display: flex; align-items: center; gap: 10px;
+    }
+    .lane-title h3 { font-size: 15px; font-weight: 680; letter-spacing: -.01em; }
+    .lane-meta { font-size: 12.5px; color: var(--text-3); }
+
+    /* Suggestion group rows */
+    .group-list { display: grid; gap: 10px; }
+    .group {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(160px, 220px) auto minmax(200px, auto);
+      gap: 14px 18px; align-items: center;
+      padding: 14px 16px;
+      background: var(--surface);
+      border: 1px solid var(--border-soft);
+      border-radius: var(--radius);
+    }
+    .group:hover { border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
+    .group-payee .name { font-weight: 650; font-size: 14px; letter-spacing: -.01em; }
+    .group-payee .meta {
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+      margin-top: 4px; font-size: 12.5px; color: var(--text-3);
+    }
+    .group-slug { display: flex; flex-direction: column; gap: 6px; }
+    .group-stats {
+      text-align: right; font-variant-numeric: tabular-nums;
+    }
+    .group-stats .cents {
+      font-family: var(--mono); font-weight: 650; font-size: 14px;
+    }
+    .group-stats .count { font-size: 12.5px; color: var(--text-3); margin-top: 2px; }
+    .group-actions {
+      display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end;
+    }
+
+    .empty-lane {
+      padding: 22px 18px; text-align: center;
+      border: 1px dashed var(--border); border-radius: var(--radius);
+      background: var(--surface-2); color: var(--text-3); font-size: 13px;
+    }
+
+    /* Mini ledger peek (context under suggest) */
+    .ledger-peek { margin-top: 4px; }
+    .stmt-head {
+      display: flex; align-items: center; gap: 14px; padding: 18px 24px 8px;
+    }
+    .avatar {
+      width: 40px; height: 40px; border-radius: 13px; display: grid; place-items: center;
+      font-weight: 700; font-size: 14px; color: #fff;
+      background: linear-gradient(135deg, #809cff, #4966e9);
+    }
+    .av-chase { background: linear-gradient(135deg, #3d7bff, #1d4ed8); }
+    .av-schwab { background: linear-gradient(135deg, #27b4e6, #0b7fb3); }
+    .table-scroll { overflow-x: auto; }
+    table.table {
+      width: 100%; border-collapse: collapse; font-size: 13px;
+    }
+    table.table th, table.table td {
+      padding: 10px 14px; border-top: 1px solid var(--border-soft); text-align: left;
+    }
+    table.table th {
+      font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+      color: var(--text-3); font-weight: 550; border-top: 0;
+    }
+    table.table td.amount { text-align: right; }
+    tr.opaque-row td { background: color-mix(in srgb, var(--warn-soft) 55%, transparent); }
+    tr.opaque-row td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
+
+    .state-panel { display: none; }
+    .state-panel.is-active { display: grid; gap: 24px; }
+
+    .toolbar-note {
+      font-size: 12px; color: var(--text-3); max-width: 28rem;
+    }
+
+    @media (max-width: 1100px) {
+      .group {
+        grid-template-columns: 1fr 1fr;
+      }
+      .group-actions { justify-content: flex-start; grid-column: 1 / -1; }
+      .group-stats { text-align: left; }
+    }
+    @media (max-width: 980px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar {
+        position: static; height: auto; flex-direction: row; align-items: center;
+        overflow-x: auto; padding: 12px 18px; border-right: 0; border-bottom: 1px solid var(--sidebar-border);
+      }
+      .nav { flex-direction: row; }
+      .nav-label, .vault-card { display: none; }
+      .topbar { top: 0; }
+      .review-note { margin-left: 0; }
+    }
+    @media (max-width: 720px) {
+      .topbar, .content { padding-left: 18px; padding-right: 18px; }
+      .group { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <svg width="0" height="0" class="sprite" aria-hidden="true" focusable="false">
+    <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h14V9.5"/></symbol>
+    <symbol id="i-wallet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="14" rx="3"/><path d="M3 10h18"/><circle cx="16.5" cy="15" r="1.2" fill="currentColor"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4.5 6v6c0 4.5 3.2 7.8 7.5 9 4.3-1.2 7.5-4.5 7.5-9V6z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 6-6 6 6 6"/></symbol>
+    <symbol id="i-cal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5"/><circle cx="12" cy="16" r=".8" fill="currentColor"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  </svg>
+
+  <div class="review-bar" role="navigation" aria-label="Wireframe states">
+    <strong>Wireframe</strong>
+    <div class="tabs" role="tablist" aria-label="Bulk suggest states">
+      <button type="button" role="tab" aria-selected="true" data-state="review">1 · Review queue</button>
+      <button type="button" role="tab" aria-selected="false" data-state="downtime">2 · JARVIS down</button>
+      <button type="button" role="tab" aria-selected="false" data-state="idle">3 · Before Run suggest</button>
+      <button type="button" role="tab" aria-selected="false" data-state="opaque">4 · Opaque-heavy (Schwab)</button>
+    </div>
+    <span class="review-note">Ledger shell = live Vault chrome · Suggest = group-by-payee · SYNTHETIC · plan B0 · no product code</span>
+  </div>
+
+  <div class="app">
+    <aside class="sidebar" aria-label="Primary">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 3h12l4 6-10 12L2 9z"/><path d="M2 9h20M9 3l3 18 3-18"/></svg>
+        </div>
+        <div class="brand-name">SAPPHIRE</div>
+      </div>
+
+      <nav class="nav" aria-label="Primary">
+        <div class="nav-label">Money</div>
+        <button type="button"><svg class="icon"><use href="#i-home"/></svg>Overview</button>
+        <button type="button"><svg class="icon"><use href="#i-wallet"/></svg>Budget</button>
+        <button type="button" aria-current="page"><svg class="icon"><use href="#i-doc"/></svg>Statements</button>
+        <div class="nav-label spaced">Verify</div>
+        <button type="button"><svg class="icon"><use href="#i-shield"/></svg>Audit</button>
+      </nav>
+
+      <div class="vault-card" id="sidebar-vault">
+        <div class="row"><span class="dot" id="sidebar-dot"></span><span id="sidebar-status">Local Vault online</span></div>
+        <ul>
+          <li><span>Parsing</span><span>On-device</span></li>
+          <li><span>PII to cloud</span><span>Never</span></li>
+          <li><span>Suggest LLM</span><span id="sidebar-llm">JARVIS up</span></li>
+          <li><span>Precision</span><span>Integer cents</span></li>
+        </ul>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="topbar-heading">
+          <span class="topbar-kicker">Private financial workspace</span>
+          <div class="topbar-title">Vault Ledger</div>
+        </div>
+        <div class="topbar-actions">
+          <button type="button" id="theme-toggle" class="theme-toggle" aria-label="Switch to light theme" title="Switch to light theme">
+            <svg class="icon icon-moon"><use href="#i-moon"/></svg>
+            <svg class="icon icon-sun"><use href="#i-sun"/></svg>
+          </button>
+          <button type="button" class="btn btn-primary"><svg class="icon"><use href="#i-upload"/></svg>Upload statement</button>
+        </div>
+      </header>
+
+      <div class="content">
+        <section class="view">
+          <button type="button" class="btn-link"><svg class="icon"><use href="#i-back"/></svg>Back to Overview</button>
+
+          <header class="page-head">
+            <h1>Vault Ledger</h1>
+            <p>
+              <span class="chip chip-accent">latest statements</span>
+              Suggest labels for unlabeled spend — Accept / Reject a handful of payee groups. Nothing writes until Accept.
+            </p>
+          </header>
+
+          <div class="marker">
+            <strong>Proposed · B0</strong>
+            Fat-marker for bulk correct: rules first, Vault residual only, opaque EW strip honest, JARVIS downtime loud. Overview pie stays read-only.
+          </div>
+
+          <!-- ========== STATE 1: Review queue (JARVIS up) ========== -->
+          <div class="state-panel is-active" data-panel="review">
+            <div class="scope-bar">
+              <div class="scope-left">
+                <button type="button" class="month-picker-trigger" aria-label="Suggest period">
+                  <span class="cal-icon"><svg class="icon"><use href="#i-cal"/></svg></span>
+                  <span class="month-picker-copy">
+                    <span class="primary">October 2026</span>
+                    <span class="hint">Same calendar month as pie</span>
+                  </span>
+                </button>
+                <div class="scope-chips" aria-label="Scope counts">
+                  <span class="chip chip-neutral">Unlabeled spend: <span class="num">141</span></span>
+                  <span class="chip chip-warn">Opaque: <span class="num">98</span></span>
+                  <span class="chip chip-accent">Suggestable: <span class="num">43</span></span>
+                </div>
+              </div>
+              <div class="scope-actions">
+                <button type="button" class="btn btn-ghost btn-sm">Accept all rule hits</button>
+                <button type="button" class="btn btn-danger btn-sm">Reject all Vault</button>
+                <button type="button" class="btn btn-primary btn-sm"><svg class="icon"><use href="#i-spark"/></svg>Run suggest</button>
+              </div>
+            </div>
+
+            <div class="opaque-strip" role="status">
+              <div class="badge num" aria-hidden="true">98</div>
+              <div>
+                <h3>Opaque Electronic Withdrawal — ineligible for suggest</h3>
+                <p>
+                  <strong>98</strong> Schwab checking rows have no payee (<code>Electronic Withdrawal</code> and similar bank types).
+                  Rules and Vault must not invent merchants. Label manually on the ledger, or import a richer export (CSV/OFX) later.
+                </p>
+                <div class="hint-row">
+                  <button type="button" class="btn-link">Scroll to opaque ledger rows →</button>
+                  <span class="chip chip-neutral">Suggest pipeline: payee IS NOT NULL only</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="lane">
+              <div class="lane-head">
+                <div class="lane-title">
+                  <span class="chip chip-rule">rule</span>
+                  <h3>Deterministic rule hits</h3>
+                </div>
+                <span class="lane-meta">3 groups · 27 txns · Accept writes <code>source=rule</code></span>
+              </div>
+              <div class="group-list">
+                <article class="group" aria-label="Rule suggestion SYNTHETIC PG&amp;E">
+                  <div class="group-payee">
+                    <div class="name">SYNTHETIC PG&amp;E</div>
+                    <div class="meta">
+                      <span class="chip chip-rule">rule</span>
+                      <span>exact map · <code>pge_utility</code></span>
+                    </div>
+                  </div>
+                  <div class="group-slug">
+                    <label class="faint" for="slug-r1">Proposed slug</label>
+                    <select id="slug-r1" class="select" aria-label="Change slug for SYNTHETIC PG&amp;E">
+                      <option selected>Utilities</option>
+                      <option>Housing</option>
+                      <option>Groceries</option>
+                      <option>Uncategorized</option>
+                    </select>
+                  </div>
+                  <div class="group-stats">
+                    <div class="cents amount">$384.12</div>
+                    <div class="count">12 txns · abs cents</div>
+                  </div>
+                  <div class="group-actions">
+                    <button type="button" class="btn btn-pos btn-sm"><svg class="icon"><use href="#i-check"/></svg>Accept group</button>
+                    <button type="button" class="btn btn-ghost btn-sm"><svg class="icon"><use href="#i-x"/></svg>Reject</button>
+                  </div>
+                </article>
+
+                <article class="group" aria-label="Rule suggestion SYNTHETIC Whole Foods">
+                  <div class="group-payee">
+                    <div class="name">SYNTHETIC WHOLE FOODS *0000</div>
+                    <div class="meta">
+                      <span class="chip chip-rule">rule</span>
+                      <span>normalized · <code>whole_foods_grocery</code></span>
+                    </div>
+                  </div>
+                  <div class="group-slug">
+                    <label class="faint" for="slug-r2">Proposed slug</label>
+                    <select id="slug-r2" class="select">
+                      <option selected>Groceries</option>
+                      <option>Dining</option>
+                      <option>Uncategorized</option>
+                    </select>
+                  </div>
+                  <div class="group-stats">
+                    <div class="cents amount">$612.40</div>
+                    <div class="count">11 txns · abs cents</div>
+                  </div>
+                  <div class="group-actions">
+                    <button type="button" class="btn btn-pos btn-sm"><svg class="icon"><use href="#i-check"/></svg>Accept group</button>
+                    <button type="button" class="btn btn-ghost btn-sm"><svg class="icon"><use href="#i-x"/></svg>Reject</button>
+                  </div>
+                </article>
+
+                <article class="group" aria-label="Rule suggestion SYNTHETIC Spotify">
+                  <div class="group-payee">
+                    <div class="name">SYNTHETIC SPOTIFY USA</div>
+                    <div class="meta">
+                      <span class="chip chip-rule">rule</span>
+                      <span>exact map · <code>spotify_subs</code></span>
+                    </div>
+                  </div>
+                  <div class="group-slug">
+                    <label class="faint" for="slug-r3">Proposed slug</label>
+                    <select id="slug-r3" class="select">
+                      <option selected>Subscriptions</option>
+                      <option>Entertainment</option>
+                      <option>Uncategorized</option>
+                    </select>
+                  </div>
+                  <div class="group-stats">
+                    <div class="cents amount">$47.91</div>
+                    <div class="count">4 txns · abs cents</div>
+                  </div>
+                  <div class="group-actions">
+                    <button type="button" class="btn btn-pos btn-sm"><svg class="icon"><use href="#i-check"/></svg>Accept group</button>
+                    <button type="button" class="btn btn-ghost btn-sm"><svg class="icon"><use href="#i-x"/></svg>Reject</button>
+                  </div>
+                </article>
+              </div>
+            </div>
+
+            <div class="lane">
+              <div class="lane-head">
+                <div class="lane-title">
+                  <span class="chip chip-vault">vault_suggest</span>
+                  <h3>Vault residual (JARVIS)</h3>
+                </div>
+                <span class="lane-meta">2 groups · 16 txns · Accept → <code>vault_suggest_accepted</code> · never bulk-accept without scan</span>
+              </div>
+              <div class="group-list">
+                <article class="group" aria-label="Vault suggestion SYNTHETIC Blue Bottle">
+                  <div class="group-payee">
+                    <div class="name">SYNTHETIC BLUE BOTTLE SF</div>
+                    <div class="meta">
+                      <span class="chip chip-vault">vault_suggest</span>
+                      <span>closed-set map · “coffee / cafe”</span>
+                    </div>
+                  </div>
+                  <div class="group-slug">
+                    <label class="faint" for="slug-v1">Proposed slug</label>
+                    <select id="slug-v1" class="select">
+                      <option selected>Dining</option>
+                      <option>Groceries</option>
+                      <option>Uncategorized</option>
+                    </select>
+                  </div>
+                  <div class="group-stats">
+                    <div class="cents amount">$86.25</div>
+                    <div class="count">9 txns · abs cents</div>
+                  </div>
+                  <div class="group-actions">
+                    <button type="button" class="btn btn-pos btn-sm"><svg class="icon"><use href="#i-check"/></svg>Accept group</button>
+                    <button type="button" class="btn btn-ghost btn-sm"><svg class="icon"><use href="#i-x"/></svg>Reject</button>
+                  </div>
+                </article>
+
+                <article class="group" aria-label="Vault suggestion SYNTHETIC Kaiser">
+                  <div class="group-payee">
+                    <div class="name">SYNTHETIC KAISER PERM *0000</div>
+                    <div class="meta">
+                      <span class="chip chip-vault">vault_suggest</span>
+                      <span>closed-set map · “health / insurance”</span>
+                    </div>
+                  </div>
+                  <div class="group-slug">
+                    <label class="faint" for="slug-v2">Proposed slug</label>
+                    <select id="slug-v2" class="select">
+                      <option selected>Health</option>
+                      <option>Insurance</option>
+                      <option>Uncategorized</option>
+                    </select>
+                  </div>
+                  <div class="group-stats">
+                    <div class="cents amount">$420.00</div>
+                    <div class="count">7 txns · abs cents</div>
+                  </div>
+                  <div class="group-actions">
+                    <button type="button" class="btn btn-pos btn-sm"><svg class="icon"><use href="#i-check"/></svg>Accept group</button>
+                    <button type="button" class="btn btn-ghost btn-sm"><svg class="icon"><use href="#i-x"/></svg>Reject</button>
+                  </div>
+                </article>
+              </div>
+            </div>
+
+            <div class="card ledger-peek">
+              <div class="stmt-head">
+                <span class="avatar av-chase">C</span>
+                <div>
+                  <h2>Chase · Credit card · *0000</h2>
+                  <p class="sub">2026-10-01 → 2026-10-31 · <span class="chip chip-neutral">non-liquid</span> · merchant payees present</p>
+                </div>
+              </div>
+              <div class="card-body table-scroll">
+                <p class="eyebrow" style="margin-bottom:8px;">Ledger context (manual label still available per row)</p>
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Description</th>
+                      <th>Payee</th>
+                      <th>Spend</th>
+                      <th class="amount">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td class="muted num">2026-10-04</td>
+                      <td>SYNTHETIC WHOLE FOODS #412</td>
+                      <td>SYNTHETIC WHOLE FOODS *0000</td>
+                      <td><span class="chip chip-accent">suggested · Groceries</span></td>
+                      <td class="amount num neg">-$54.20</td>
+                    </tr>
+                    <tr>
+                      <td class="muted num">2026-10-12</td>
+                      <td>SYNTHETIC BLUE BOTTLE</td>
+                      <td>SYNTHETIC BLUE BOTTLE SF</td>
+                      <td><span class="chip chip-vault">vault · Dining</span></td>
+                      <td class="amount num neg">-$9.75</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- ========== STATE 2: JARVIS downtime ========== -->
+          <div class="state-panel" data-panel="downtime">
+            <div class="scope-bar">
+              <div class="scope-left">
+                <button type="button" class="month-picker-trigger" aria-label="Suggest period">
+                  <span class="cal-icon"><svg class="icon"><use href="#i-cal"/></svg></span>
+                  <span class="month-picker-copy">
+                    <span class="primary">October 2026</span>
+                    <span class="hint">Same calendar month as pie</span>
+                  </span>
+                </button>
+                <div class="scope-chips">
+                  <span class="chip chip-neutral">Unlabeled spend: <span class="num">141</span></span>
+                  <span class="chip chip-warn">Opaque: <span class="num">98</span></span>
+                  <span class="chip chip-accent">Suggestable: <span class="num">43</span></span>
+                </div>
+              </div>
+              <div class="scope-actions">
+                <button type="button" class="btn btn-ghost btn-sm">Accept all rule hits</button>
+                <button type="button" class="btn btn-danger btn-sm" disabled title="No Vault suggestions staged">Reject all Vault</button>
+                <button type="button" class="btn btn-primary btn-sm"><svg class="icon"><use href="#i-spark"/></svg>Run suggest</button>
+              </div>
+            </div>
+
+            <div class="alert danger" role="alert">
+              <svg class="icon"><use href="#i-alert"/></svg>
+              <div>
+                <h4>JARVIS unavailable — Vault lane skipped</h4>
+                <p>
+                  <code>VaultInferenceClient.is_available()</code> is false (or Inference* error).
+                  Rule suggestions still load. No LLM writes, no soft offline guesses.
+                  Product path remains manual + rules until Watchtower inference is restored.
+                </p>
+                <div class="alert-actions">
+                  <span class="chip chip-neg">0 vault groups staged</span>
+                  <span class="chip chip-neutral">Infra gate — not an app feature bet</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="opaque-strip" role="status">
+              <div class="badge num">98</div>
+              <div>
+                <h3>Opaque Electronic Withdrawal — ineligible for suggest</h3>
+                <p>Same honesty strip as happy path. Downtime does not invent payees for Schwab EW.</p>
+                <div class="hint-row">
+                  <button type="button" class="btn-link">Scroll to opaque ledger rows →</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="lane">
+              <div class="lane-head">
+                <div class="lane-title">
+                  <span class="chip chip-rule">rule</span>
+                  <h3>Deterministic rule hits</h3>
+                </div>
+                <span class="lane-meta">Always available · 3 groups still reviewable</span>
+              </div>
+              <div class="group-list">
+                <article class="group">
+                  <div class="group-payee">
+                    <div class="name">SYNTHETIC PG&amp;E</div>
+                    <div class="meta"><span class="chip chip-rule">rule</span><span>exact map</span></div>
+                  </div>
+                  <div class="group-slug">
+                    <label class="faint" for="slug-d1">Proposed slug</label>
+                    <select id="slug-d1" class="select"><option selected>Utilities</option></select>
+                  </div>
+                  <div class="group-stats">
+                    <div class="cents amount">$384.12</div>
+                    <div class="count">12 txns</div>
+                  </div>
+                  <div class="group-actions">
+                    <button type="button" class="btn btn-pos btn-sm">Accept group</button>
+                    <button type="button" class="btn btn-ghost btn-sm">Reject</button>
+                  </div>
+                </article>
+                <article class="group">
+                  <div class="group-payee">
+                    <div class="name">SYNTHETIC WHOLE FOODS *0000</div>
+                    <div class="meta"><span class="chip chip-rule">rule</span><span>normalized</span></div>
+                  </div>
+                  <div class="group-slug">
+                    <label class="faint" for="slug-d2">Proposed slug</label>
+                    <select id="slug-d2" class="select"><option selected>Groceries</option></select>
+                  </div>
+                  <div class="group-stats">
+                    <div class="cents amount">$612.40</div>
+                    <div class="count">11 txns</div>
+                  </div>
+                  <div class="group-actions">
+                    <button type="button" class="btn btn-pos btn-sm">Accept group</button>
+                    <button type="button" class="btn btn-ghost btn-sm">Reject</button>
+                  </div>
+                </article>
+              </div>
+            </div>
+
+            <div class="lane">
+              <div class="lane-head">
+                <div class="lane-title">
+                  <span class="chip chip-vault">vault_suggest</span>
+                  <h3>Vault residual</h3>
+                </div>
+                <span class="lane-meta">Skipped while JARVIS down</span>
+              </div>
+              <div class="empty-lane">
+                No Vault suggestions. Residual payees stay Uncategorized until inference is up — or label manually / seed a rule.
+              </div>
+            </div>
+          </div>
+
+          <!-- ========== STATE 3: Before Run suggest ========== -->
+          <div class="state-panel" data-panel="idle">
+            <div class="scope-bar">
+              <div class="scope-left">
+                <button type="button" class="month-picker-trigger">
+                  <span class="cal-icon"><svg class="icon"><use href="#i-cal"/></svg></span>
+                  <span class="month-picker-copy">
+                    <span class="primary">October 2026</span>
+                    <span class="hint">Pick month · then Run suggest</span>
+                  </span>
+                </button>
+                <div class="scope-chips">
+                  <span class="chip chip-neutral">Unlabeled spend: <span class="num">141</span></span>
+                  <span class="chip chip-warn">Opaque: <span class="num">98</span></span>
+                  <span class="chip chip-accent">Suggestable: <span class="num">43</span></span>
+                </div>
+              </div>
+              <div class="scope-actions">
+                <button type="button" class="btn btn-ghost btn-sm" disabled>Accept all rule hits</button>
+                <button type="button" class="btn btn-danger btn-sm" disabled>Reject all Vault</button>
+                <button type="button" class="btn btn-primary btn-sm"><svg class="icon"><use href="#i-spark"/></svg>Run suggest</button>
+              </div>
+            </div>
+
+            <div class="alert info">
+              <svg class="icon"><use href="#i-spark"/></svg>
+              <div>
+                <h4>Staging empty — Run suggest to compute groups</h4>
+                <p>
+                  Idempotent recompute. Does <strong>not</strong> write <code>transaction_spend_labels</code>.
+                  Opaque rows are filtered out before rules / Vault. Closed slug set only.
+                </p>
+                <p class="toolbar-note" style="margin-top:8px;">No-gos: auto-apply on load · cloud model badge · inventing payee chips on opaque rows.</p>
+              </div>
+            </div>
+
+            <div class="opaque-strip" role="status">
+              <div class="badge num">98</div>
+              <div>
+                <h3>Opaque count known before suggest</h3>
+                <p>Always report opaque separately from “0 suggestions” so Schwab PDF emptiness is not mistaken for a broken matcher.</p>
+              </div>
+            </div>
+
+            <div class="empty-lane">No suggestion groups yet. Press <strong>Run suggest</strong>.</div>
+          </div>
+
+          <!-- ========== STATE 4: Opaque-heavy Schwab ========== -->
+          <div class="state-panel" data-panel="opaque">
+            <div class="scope-bar">
+              <div class="scope-left">
+                <button type="button" class="month-picker-trigger">
+                  <span class="cal-icon"><svg class="icon"><use href="#i-cal"/></svg></span>
+                  <span class="month-picker-copy">
+                    <span class="primary">October 2026</span>
+                    <span class="hint">Schwab checking dogfood month</span>
+                  </span>
+                </button>
+                <div class="scope-chips">
+                  <span class="chip chip-neutral">Unlabeled spend: <span class="num">141</span></span>
+                  <span class="chip chip-warn">Opaque: <span class="num">132</span></span>
+                  <span class="chip chip-accent">Suggestable: <span class="num">9</span></span>
+                </div>
+              </div>
+              <div class="scope-actions">
+                <button type="button" class="btn btn-ghost btn-sm">Accept all rule hits</button>
+                <button type="button" class="btn btn-danger btn-sm">Reject all Vault</button>
+                <button type="button" class="btn btn-primary btn-sm"><svg class="icon"><use href="#i-spark"/></svg>Run suggest</button>
+              </div>
+            </div>
+
+            <div class="opaque-strip" role="status">
+              <div class="badge num">132</div>
+              <div>
+                <h3>Most of this month is opaque — suggest cannot fill the pie</h3>
+                <p>
+                  <strong>132</strong> Electronic Withdrawal (etc.) rows have <code>payee=NULL</code>.
+                  Bulk suggest will only cover the <strong>9</strong> suggestable rows (Chase-like or rare Schwab payees).
+                  Path out of opacity: richer ingest (CSV/OFX) — parallel track, not hallucinated merchants from amount rhythm.
+                </p>
+                <div class="hint-row">
+                  <button type="button" class="btn-link">Scroll to opaque ledger rows →</button>
+                  <span class="chip chip-warn">Manual per-row label still available</span>
+                  <span class="chip chip-neutral">B5 export = real dogfood fix</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="lane">
+              <div class="lane-head">
+                <div class="lane-title">
+                  <span class="chip chip-rule">rule</span>
+                  <h3>Few rule hits on this account</h3>
+                </div>
+                <span class="lane-meta">1 group · 3 txns</span>
+              </div>
+              <div class="group-list">
+                <article class="group">
+                  <div class="group-payee">
+                    <div class="name">SYNTHETIC SCHWAB BILL PAY UTIL</div>
+                    <div class="meta"><span class="chip chip-rule">rule</span><span>rare non-opaque payee</span></div>
+                  </div>
+                  <div class="group-slug">
+                    <label class="faint" for="slug-o1">Proposed slug</label>
+                    <select id="slug-o1" class="select"><option selected>Utilities</option></select>
+                  </div>
+                  <div class="group-stats">
+                    <div class="cents amount">$112.00</div>
+                    <div class="count">3 txns</div>
+                  </div>
+                  <div class="group-actions">
+                    <button type="button" class="btn btn-pos btn-sm">Accept group</button>
+                    <button type="button" class="btn btn-ghost btn-sm">Reject</button>
+                  </div>
+                </article>
+              </div>
+            </div>
+
+            <div class="lane">
+              <div class="lane-head">
+                <div class="lane-title">
+                  <span class="chip chip-vault">vault_suggest</span>
+                  <h3>Vault residual</h3>
+                </div>
+                <span class="lane-meta">Long-tail among the 9 suggestable only</span>
+              </div>
+              <div class="empty-lane">No residual Vault groups this month (all suggestable rows hit rules, or JARVIS abstained).</div>
+            </div>
+
+            <div class="card ledger-peek">
+              <div class="stmt-head">
+                <span class="avatar av-schwab">S</span>
+                <div>
+                  <h2>Schwab · Checking · *0000</h2>
+                  <p class="sub">2026-10-01 → 2026-10-31 · <span class="chip chip-neutral">liquid</span> · opaque bank types dominate</p>
+                </div>
+              </div>
+              <div class="card-body table-scroll">
+                <p class="eyebrow" style="margin-bottom:8px;">Opaque rows highlighted — ineligible for Accept via suggest</p>
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Description</th>
+                      <th>Payee</th>
+                      <th>Spend</th>
+                      <th class="amount">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr class="opaque-row">
+                      <td class="muted num">2026-10-03</td>
+                      <td>Electronic Withdrawal</td>
+                      <td class="muted">—</td>
+                      <td><span class="chip chip-warn">manual only</span></td>
+                      <td class="amount num neg">-$1,200.00</td>
+                    </tr>
+                    <tr class="opaque-row">
+                      <td class="muted num">2026-10-08</td>
+                      <td>Electronic Withdrawal</td>
+                      <td class="muted">—</td>
+                      <td><span class="chip chip-warn">manual only</span></td>
+                      <td class="amount num neg">-$87.43</td>
+                    </tr>
+                    <tr>
+                      <td class="muted num">2026-10-15</td>
+                      <td>SYNTHETIC SCHWAB BILL PAY UTIL</td>
+                      <td>SYNTHETIC SCHWAB BILL PAY UTIL</td>
+                      <td><span class="chip chip-rule">rule · Utilities</span></td>
+                      <td class="amount num neg">-$112.00</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    (function () {
+      var tabs = document.querySelectorAll(".tabs [data-state]");
+      var panels = document.querySelectorAll(".state-panel");
+      var sidebarDot = document.getElementById("sidebar-dot");
+      var sidebarStatus = document.getElementById("sidebar-status");
+      var sidebarLlm = document.getElementById("sidebar-llm");
+
+      function setState(name) {
+        tabs.forEach(function (btn) {
+          btn.setAttribute("aria-selected", btn.getAttribute("data-state") === name ? "true" : "false");
+        });
+        panels.forEach(function (panelEl) {
+          panelEl.classList.toggle("is-active", panelEl.getAttribute("data-panel") === name);
+        });
+        var down = name === "downtime";
+        if (sidebarDot) {
+          sidebarDot.classList.toggle("dot-down", down);
+        }
+        if (sidebarStatus) {
+          sidebarStatus.textContent = down ? "Local Vault online · JARVIS down" : "Local Vault online";
+        }
+        if (sidebarLlm) {
+          sidebarLlm.textContent = down ? "JARVIS down" : "JARVIS up";
+        }
+      }
+
+      tabs.forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          setState(btn.getAttribute("data-state"));
+        });
+      });
+
+      var toggle = document.getElementById("theme-toggle");
+      if (toggle) {
+        toggle.addEventListener("click", function () {
+          var next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+          document.documentElement.setAttribute("data-theme", next);
+          var label = next === "dark" ? "Switch to light theme" : "Switch to dark theme";
+          toggle.setAttribute("aria-label", label);
+          toggle.setAttribute("title", label);
+        });
+      }
+    })();
+  </script>
+</body>
+</html>
