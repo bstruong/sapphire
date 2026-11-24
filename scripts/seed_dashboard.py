@@ -12,12 +12,23 @@ Guarantees:
 
 from __future__ import annotations
 
+import argparse
 import os
+import sys
 import uuid
 from datetime import UTC, date, datetime
 
 from app.budget.envelopes import create_envelope
 from app.db.connection import get_db_connection, init_db
+
+# Accounts this script inserts. Anything else is treated as personal/dogfood data.
+_SEED_ACCOUNT_KEYS = frozenset(
+    {
+        ("Chase", "*0000", "checking"),
+        ("Chase", "*0001", "credit_card"),
+        ("Schwab", "*0002", "brokerage_cash"),
+    }
+)
 
 
 def _get_or_create_account(
@@ -35,7 +46,33 @@ def _get_or_create_account(
     return cur.fetchone()[0]
 
 
-def seed() -> None:
+def _refuse_truncate_if_personal(cur, *, force: bool) -> None:
+    """Fail loud when dogfood has non-seed accounts unless ``force`` is set."""
+    if force:
+        return
+    cur.execute(
+        """
+        SELECT institution, account_mask, account_type
+        FROM accounts
+        ORDER BY institution, account_mask
+        """
+    )
+    personal = [
+        row
+        for row in cur.fetchall()
+        if (str(row[0]), str(row[1]), str(row[2])) not in _SEED_ACCOUNT_KEYS
+    ]
+    if not personal:
+        return
+    sample = ", ".join(f"{i}/{m}/{t}" for i, m, t in personal[:5])
+    raise SystemExit(
+        "Refusing to TRUNCATE: non-seed accounts present "
+        f"({len(personal)}), e.g. {sample}. "
+        "Re-run with --force only if you intend to wipe personal Vault data."
+    )
+
+
+def seed(*, force: bool = False) -> None:
     if not os.environ.get("DATABASE_URL"):
         # Dogfood Vault DB — never the pytest sapphire_test database.
         os.environ["DATABASE_URL"] = (
@@ -44,6 +81,7 @@ def seed() -> None:
 
     init_db()
     with get_db_connection() as conn, conn.cursor() as cur:
+        _refuse_truncate_if_personal(cur, force=force)
         # Reset so re-runs stay idempotent (Manual UI QA against the test DB).
         cur.execute(
             """
@@ -378,4 +416,17 @@ def seed() -> None:
 
 
 if __name__ == "__main__":
-    seed()
+    parser = argparse.ArgumentParser(
+        description="Seed synthetic dashboard statements (TRUNCATE first)."
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Allow TRUNCATE when non-seed (personal) accounts exist.",
+    )
+    args = parser.parse_args()
+    try:
+        seed(force=args.force)
+    except SystemExit as exc:
+        print(f"[FAIL] {exc}", file=sys.stderr)
+        raise

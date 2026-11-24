@@ -57,10 +57,30 @@
         </div>
 
         <div class="alert-actions">
+            {% if succeeded > 0 %}
+            <button type="button" class="btn btn-primary btn-sm"
+                    hx-get="/api/v1/dashboard/overview"
+                    hx-target="#pane-vault-body"
+                    hx-swap="innerHTML">View Overview</button>
+            {% endif %}
             <button type="button" class="btn btn-ghost btn-sm"
                     hx-get="/api/v1/dashboard/statements"
                     hx-target="#pane-vault-body"
                     hx-swap="innerHTML">Back to statements</button>
         </div>
     </div>
+
+    {% if history %}
+    {% include "overview_history.html" %}
+    {% elif history_error_code %}
+    <div class="card" id="overview-history">
+        <div class="alert" role="alert">
+            <svg class="icon"><use href="#i-alert"/></svg>
+            <div>
+                <h4>History unavailable</h4>
+                <p><code>{{ history_error_code }}</code> — {{ history_error_detail }}</p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 </section>

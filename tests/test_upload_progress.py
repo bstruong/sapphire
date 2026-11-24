@@ -179,7 +179,35 @@ class TestUploadSummaryHtml:
         assert "ok.pdf" in response.text
         assert "bad.pdf" in response.text
         assert "ADAPTER_MATCH_FAILED" in response.text
+        assert "View Overview" in response.text
+        assert 'hx-get="/api/v1/dashboard/overview"' in response.text
         assert "style=" not in response.text
+
+    def test_all_failed_summary_omits_overview_history_cta(
+        self, client: TestClient
+    ) -> None:
+        payload = {
+            "results": [
+                {
+                    "filename": "bad.pdf",
+                    "ok": False,
+                    "statement_id": None,
+                    "run_id": None,
+                    "error_code": "ADAPTER_MATCH_FAILED",
+                    "detail": "No adapter matched",
+                    "adapter_id": None,
+                }
+            ]
+        }
+        response = client.post(
+            "/api/v1/dashboard/upload-summary",
+            headers={**HX, "Content-Type": "application/json"},
+            content=json.dumps(payload),
+        )
+        assert response.status_code == 200
+        assert "Uploaded 0 of 1" in response.text
+        assert "View Overview" not in response.text
+        assert 'id="overview-history"' not in response.text
 
     def test_empty_results_fails_loud(self, client: TestClient) -> None:
         response = client.post(

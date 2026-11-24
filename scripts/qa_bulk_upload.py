@@ -65,13 +65,18 @@ def main() -> int:
     print("=" * 70)
     failures = 0
 
-    if not os.environ.get("DATABASE_URL"):
+    # Prefer isolated pytest DB — this script TRUNCATEs and must not wipe dogfood.
+    if os.environ.get("TEST_DATABASE_URL"):
+        os.environ["DATABASE_URL"] = os.environ["TEST_DATABASE_URL"]
+    elif not os.environ.get("DATABASE_URL"):
         os.environ["DATABASE_URL"] = (
-            "postgresql://postgres:sapphire@localhost:54329/sapphire"
+            "postgresql://postgres:sapphire@localhost:54329/sapphire_test"
         )
-    # Prefer dogfood DB; never point pytest DB at uvicorn/QA by accident.
-    if os.environ["DATABASE_URL"].rstrip("/").endswith(("_test", "_pytest")):
-        _fail("DATABASE_URL points at a pytest DB; use the sapphire dogfood DB")
+    if not os.environ["DATABASE_URL"].rstrip("/").endswith(("_test", "_pytest")):
+        _fail(
+            "Refusing to TRUNCATE a non-test database "
+            f"(got {os.environ['DATABASE_URL'].rsplit('/', 1)[-1]!r})"
+        )
         print("\nResult: [FAIL]")
         return 1
 
@@ -130,8 +135,13 @@ def main() -> int:
                 ],
                 headers=HX,
             )
-        if resp.status_code == 200 and "Uploaded 2 of 2" in resp.text:
-            _pass("Dashboard bulk upload: Uploaded 2 of 2")
+        if (
+            resp.status_code == 200
+            and "Uploaded 2 of 2" in resp.text
+            and "View Overview" in resp.text
+            and 'id="overview-history"' in resp.text
+        ):
+            _pass("Dashboard bulk upload: Uploaded 2 of 2 + History refresh")
         else:
             _fail(f"Happy batch unexpected: status={resp.status_code}")
             failures += 1
@@ -150,8 +160,9 @@ def main() -> int:
             resp.status_code == 200
             and "Uploaded 1 of 2" in resp.text
             and "ADAPTER_MATCH_FAILED" in resp.text
+            and "View Overview" in resp.text
         ):
-            _pass("Mixed batch: 1 OK + ADAPTER_MATCH_FAILED (fail-loud)")
+            _pass("Mixed batch: 1 OK + ADAPTER_MATCH_FAILED + Overview CTA")
         else:
             _fail(f"Mixed batch unexpected: status={resp.status_code}")
             failures += 1
