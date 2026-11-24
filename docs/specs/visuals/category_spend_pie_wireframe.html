@@ -1,0 +1,1117 @@
+<!DOCTYPE html>
+<!--
+  SAPPHIRE — Category spend pie (PROPOSED fat-marker wireframe)
+  Plan: docs/category-spend-plan.md (ACRA-17 / ACRA-18)
+  Placement: Overview → History third block (after balances + pipeline income/spend).
+  Chrome: matches live dashboard.html + sapphire.css (Vault dark).
+  Synthetic only (*0000 / SYNTHETIC). No product code. Integer cents in legend.
+-->
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SAPPHIRE — Category spend pie (proposed)</title>
+  <style>
+    :root {
+      --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+      --radius-lg: 20px;
+      --radius: 14px;
+      --radius-sm: 10px;
+      --sidebar: 264px;
+      --ease: cubic-bezier(.2, .7, .2, 1);
+      --sidebar-bg: #091225;
+      --sidebar-surface: rgba(255, 255, 255, .055);
+      --sidebar-border: rgba(255, 255, 255, .08);
+      --sidebar-text: #f7f9ff;
+      --sidebar-muted: #8e9ab5;
+      --marker: #f5b84a;
+    }
+    [data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #080d17;
+      --surface: #111827;
+      --surface-2: #172132;
+      --border: #29364b;
+      --border-soft: #1c2739;
+      --text: #edf2ff;
+      --text-2: #9eabc1;
+      --text-3: #68758d;
+      --accent: #6f8cff;
+      --accent-2: #9aafff;
+      --accent-soft: rgba(91, 140, 255, .12);
+      --on-accent: #ffffff;
+      --pos: #3ddc97;
+      --pos-soft: rgba(61, 220, 151, .12);
+      --neg: #ff6b7a;
+      --neg-soft: rgba(255, 107, 122, .12);
+      --shadow: 0 1px 0 rgba(255, 255, 255, .04) inset, 0 16px 40px rgba(0, 0, 0, .28);
+      --shadow-hover: 0 22px 54px rgba(0, 0, 0, .42);
+      --hero: linear-gradient(135deg, #182862 0%, #2949af 56%, #5e74e8 100%);
+      --hero-text: #ffffff;
+      --hero-muted: #cad5ff;
+    }
+    [data-theme="light"] {
+      color-scheme: light;
+      --bg: #f3f6fc;
+      --surface: #ffffff;
+      --surface-2: #f5f7fc;
+      --border: #dce3f0;
+      --border-soft: #e9edf5;
+      --text: #11182b;
+      --text-2: #59657c;
+      --text-3: #929db1;
+      --accent: #4967f2;
+      --accent-2: #3855dc;
+      --accent-soft: rgba(73, 103, 242, .10);
+      --on-accent: #ffffff;
+      --pos: #0f9d63;
+      --pos-soft: rgba(15, 157, 99, .10);
+      --neg: #d93a4c;
+      --neg-soft: rgba(217, 58, 76, .08);
+      --shadow: 0 1px 2px rgba(17, 24, 43, .04), 0 14px 36px rgba(44, 60, 100, .08);
+      --shadow-hover: 0 20px 48px rgba(44, 60, 100, .13);
+      --hero: linear-gradient(135deg, #172557 0%, #2746aa 55%, #5f78f4 100%);
+      --hero-text: #ffffff;
+      --hero-muted: #c9d4ff;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: var(--font);
+      background:
+        radial-gradient(circle at 78% -10%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 32rem),
+        var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+    button, select { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    .num, .amount { font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+    .amount { text-align: right; white-space: nowrap; }
+    .muted { color: var(--text-2); }
+    .faint { color: var(--text-3); }
+    .pos { color: var(--pos); }
+    .neg { color: var(--neg); }
+    .strong { font-weight: 600; }
+    .sub { display: block; font-size: 12.5px; color: var(--text-2); }
+    .icon { width: 18px; height: 18px; flex: none; }
+    .sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+    /* Review chrome */
+    .review-bar {
+      position: sticky; top: 0; z-index: 40;
+      display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px;
+      padding: 10px 18px;
+      background: #0c1220;
+      border-bottom: 1px solid var(--border);
+      font-size: 12.5px;
+    }
+    [data-theme="light"] .review-bar { background: #e8edf8; }
+    .review-bar strong {
+      text-transform: uppercase; letter-spacing: .06em; font-size: 11px; color: var(--marker);
+    }
+    .tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+    .tabs button {
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-2);
+      padding: 7px 12px;
+      border-radius: 999px;
+      font-size: 12.5px;
+      font-weight: 550;
+    }
+    .tabs button[aria-selected="true"] {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+      color: var(--text);
+    }
+    .review-note { color: var(--text-3); margin-left: auto; max-width: 42rem; }
+
+    .app { display: grid; grid-template-columns: var(--sidebar) 1fr; min-height: calc(100vh - 48px); }
+
+    .sidebar {
+      position: sticky; top: 48px; height: calc(100vh - 48px);
+      display: flex; flex-direction: column; gap: 24px;
+      padding: 24px 16px 18px;
+      border-right: 1px solid var(--sidebar-border);
+      background:
+        radial-gradient(circle at 15% 0%, rgba(99, 123, 255, .22), transparent 18rem),
+        var(--sidebar-bg);
+      color: var(--sidebar-text);
+      overflow: hidden;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; padding: 3px 10px 9px; }
+    .brand-mark {
+      width: 36px; height: 36px; border-radius: 11px;
+      display: grid; place-items: center; color: #fff;
+      background: linear-gradient(135deg, #8ba4ff, #506ff5 55%, #7b5de6);
+      box-shadow: 0 10px 24px rgba(79, 105, 245, .38), inset 0 1px 0 rgba(255, 255, 255, .35);
+    }
+    .brand-mark svg { width: 19px; height: 19px; }
+    .brand-name { color: var(--sidebar-text); font-weight: 720; letter-spacing: .16em; font-size: 13px; }
+
+    .nav { display: flex; flex-direction: column; gap: 2px; }
+    .nav-label {
+      font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+      color: var(--sidebar-muted); padding: 0 12px 7px;
+    }
+    .nav-label.spaced { margin-top: 14px; }
+    .nav button {
+      display: flex; align-items: center; gap: 10px;
+      width: 100%; padding: 10px 12px; border: 1px solid transparent; border-radius: var(--radius-sm);
+      background: transparent; color: var(--sidebar-muted); text-align: left;
+    }
+    .nav button[aria-current="page"] {
+      background: linear-gradient(90deg, rgba(100, 128, 255, .2), rgba(100, 128, 255, .08));
+      border-color: rgba(144, 166, 255, .15); color: var(--sidebar-text);
+      box-shadow: inset 3px 0 0 #7691ff;
+    }
+    .nav button[aria-current="page"] .icon { color: #9bafff; }
+
+    .vault-card {
+      margin-top: auto; padding: 14px; border-radius: var(--radius);
+      background: var(--sidebar-surface); border: 1px solid var(--sidebar-border); font-size: 12px;
+    }
+    .vault-card .row { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--pos); box-shadow: 0 0 0 4px var(--pos-soft); }
+    .vault-card ul { list-style: none; margin-top: 11px; display: grid; gap: 7px; color: var(--sidebar-muted); }
+    .vault-card li { display: flex; justify-content: space-between; }
+    .vault-card li span:last-child { color: var(--sidebar-text); }
+
+    .main { min-width: 0; }
+    .topbar {
+      position: sticky; top: 48px; z-index: 5;
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      min-height: 76px; padding: 12px 42px;
+      background: color-mix(in srgb, var(--bg) 84%, transparent);
+      backdrop-filter: blur(18px);
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .topbar-heading { display: grid; gap: 1px; }
+    .topbar-kicker {
+      color: var(--accent-2); font-size: 10px; font-weight: 700;
+      letter-spacing: .11em; text-transform: uppercase;
+    }
+    .topbar-title { font-size: 20px; font-weight: 680; letter-spacing: -.025em; color: var(--text); }
+    .topbar-actions { display: flex; align-items: center; gap: 10px; }
+    .content { width: 100%; max-width: 1360px; margin: 0 auto; padding: 34px 42px 72px; }
+    .view { display: grid; gap: 24px; }
+
+    .page-head h1 { font-size: clamp(24px, 2.4vw, 32px); font-weight: 720; letter-spacing: -.035em; }
+    .page-head p { font-size: 14px; color: var(--text-2); margin-top: 4px; }
+
+    .theme-toggle {
+      display: grid; place-items: center; width: 40px; height: 40px;
+      border-radius: 12px; border: 1px solid var(--border);
+      background: var(--surface); color: var(--text-2);
+    }
+    [data-theme="light"] .theme-toggle .icon-sun { display: none; }
+    [data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      height: 40px; padding: 0 17px; border-radius: 11px; border: 1px solid transparent;
+      font-weight: 620; font-size: 13.5px; white-space: nowrap;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 72%, #8a65ff));
+      color: var(--on-accent); box-shadow: 0 9px 22px -8px var(--accent);
+    }
+    .btn-ghost { background: var(--surface); border-color: var(--border); color: var(--text); }
+    .btn-link { background: none; border: 0; color: var(--accent-2); padding: 0; font-weight: 550; }
+    .btn-link:hover { text-decoration: underline; }
+    .btn-sm { height: 30px; padding: 0 12px; font-size: 12.5px; border-radius: 8px; }
+
+    .card {
+      background: var(--surface); border: 1px solid var(--border-soft);
+      border-radius: var(--radius-lg); box-shadow: var(--shadow); overflow: hidden;
+    }
+    .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 21px 24px 0; }
+    .card-head h2 { font-size: 16px; font-weight: 680; letter-spacing: -.01em; }
+    .card-head p { font-size: 12.5px; color: var(--text-2); margin-top: 2px; }
+    .eyebrow { font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-2); font-weight: 550; }
+
+    .chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600;
+    }
+    .chip-pos { color: var(--pos); background: var(--pos-soft); }
+    .chip-neg { color: var(--neg); background: var(--neg-soft); }
+    .chip-neutral { color: var(--text-2); background: var(--surface-2); }
+    .chip-accent { color: var(--accent-2); background: var(--accent-soft); }
+
+    .field { display: grid; gap: 6px; }
+    .field label { font-size: 12.5px; color: var(--text-2); font-weight: 520; }
+    .select {
+      height: 40px; width: 100%; min-width: 160px; padding: 0 12px;
+      background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+    }
+
+    .kpis { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 18px; }
+    .kpis > .hero { grid-column: span 6; }
+    .kpis > .kpi { grid-column: span 2; }
+    .hero {
+      min-height: 184px; background: var(--hero); padding: 28px; position: relative;
+      color: var(--hero-text); border-color: rgba(255, 255, 255, .1);
+      box-shadow: 0 18px 42px rgba(36, 66, 170, .25);
+    }
+    .hero::after {
+      content: ""; position: absolute; right: -48px; top: -72px; width: 260px; height: 260px;
+      border-radius: 50%; border: 1px solid rgba(255, 255, 255, .14);
+      background: radial-gradient(circle at 38% 38%, rgba(255, 255, 255, .24), transparent 62%);
+      pointer-events: none;
+    }
+    .hero .eyebrow { color: var(--hero-muted); }
+    .hero .value { position: relative; z-index: 1; font-size: clamp(36px, 4vw, 48px); font-weight: 730; letter-spacing: -.045em; margin: 14px 0 9px; }
+    .hero .meta { position: relative; z-index: 1; display: flex; gap: 10px; align-items: center; color: var(--hero-muted); font-size: 13px; flex-wrap: wrap; }
+    .hero .chip-pos { color: #8ff0c3; background: rgba(7, 45, 33, .36); }
+    .kpi { min-height: 184px; padding: 23px; display: flex; flex-direction: column; }
+    .kpi .value { font-size: clamp(23px, 2.2vw, 29px); font-weight: 690; letter-spacing: -.035em; margin: 14px 0 4px; }
+    .kpi .foot { margin-top: auto; padding-top: 12px; font-size: 12.5px; color: var(--text-2); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+
+    .list { list-style: none; }
+    .list-head, .list-row {
+      display: grid; grid-template-columns: 40px 1.4fr 1.2fr 1fr 140px 20px;
+      align-items: center; gap: 18px; padding: 14px 24px;
+    }
+    .list-head { padding-bottom: 10px; font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); }
+    .list-row {
+      width: 100%; border: 0; border-top: 1px solid var(--border-soft);
+      background: transparent; text-align: left;
+    }
+    .chev { width: 18px; height: 18px; color: var(--text-3); }
+    .avatar {
+      width: 40px; height: 40px; border-radius: 13px; display: grid; place-items: center;
+      font-weight: 700; font-size: 14px; color: #fff;
+      background: linear-gradient(135deg, #809cff, #4966e9);
+    }
+    .av-chase { background: linear-gradient(135deg, #3d7bff, #1d4ed8); }
+    .av-schwab { background: linear-gradient(135deg, #27b4e6, #0b7fb3); }
+    .amount-col { text-align: right; }
+
+    .history-block {
+      padding: 18px 24px 20px;
+      border-top: 1px solid var(--border-soft);
+    }
+    .history-block .eyebrow {
+      font-size: 11.5px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--text-3);
+      margin-bottom: 10px;
+    }
+    .history-chart-wrap {
+      border: 1.5px dashed color-mix(in srgb, var(--accent) 45%, var(--border));
+      border-radius: var(--radius);
+      padding: 10px 12px 8px;
+      background: var(--surface-2);
+    }
+    .history-chart { width: 100%; height: 7rem; display: block; }
+    .history-line-liquid {
+      fill: none; stroke: var(--accent); stroke-width: 3;
+      stroke-linejoin: round; stroke-linecap: round;
+    }
+    .history-line-account {
+      fill: none; stroke: var(--text-3); stroke-width: 2; stroke-dasharray: 4 3;
+      stroke-linejoin: round; stroke-linecap: round;
+    }
+    .history-bar-income { fill: var(--pos); }
+    .history-bar-spend { fill: var(--neg); }
+    .history-axis-label {
+      fill: var(--text-3); font-size: 8px; font-family: var(--mono);
+    }
+    .history-legend {
+      display: flex; flex-wrap: wrap; gap: 0.75rem 1rem;
+      margin-top: 0.55rem; font-size: 12px; color: var(--text-2);
+    }
+    .history-legend .swatch {
+      display: inline-block; width: 0.7rem; height: 0.7rem;
+      margin-right: 0.3rem; vertical-align: middle;
+      border: 1px solid var(--border); border-radius: 2px;
+    }
+    .swatch-liquid { background: var(--accent); }
+    .swatch-account { background: var(--text-3); }
+    .swatch-income { background: var(--pos); }
+    .swatch-spend { background: var(--neg); }
+
+    /* Proposed pie block */
+    .pie-toolbar {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+      gap: 12px; margin-bottom: 12px;
+    }
+    .pie-period {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    }
+    .month-picker {
+      position: relative;
+    }
+    .month-picker-trigger {
+      display: inline-flex; align-items: center; gap: 10px;
+      height: 44px; padding: 0 14px 0 12px;
+      border-radius: 12px; border: 1px solid var(--border);
+      background: var(--surface-2); color: var(--text);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .03);
+    }
+    .month-picker-trigger:hover,
+    .month-picker-trigger[aria-expanded="true"] {
+      border-color: var(--accent); background: color-mix(in srgb, var(--accent-soft) 55%, var(--surface-2));
+    }
+    .month-picker-trigger .cal-icon {
+      width: 34px; height: 34px; border-radius: 9px;
+      display: grid; place-items: center;
+      background: var(--accent-soft); color: var(--accent-2);
+    }
+    .month-picker-trigger .cal-icon .icon { width: 18px; height: 18px; }
+    .month-picker-copy { text-align: left; line-height: 1.25; }
+    .month-picker-copy .primary {
+      display: block; font-weight: 650; font-size: 14px; letter-spacing: -.01em;
+    }
+    .month-picker-copy .hint {
+      display: block; font-size: 11.5px; color: var(--text-3); margin-top: 2px;
+    }
+    .month-picker-panel {
+      display: none; position: absolute; top: calc(100% + 8px); left: 0; z-index: 20;
+      width: 280px; padding: 12px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 14px; box-shadow: var(--shadow-hover);
+    }
+    .month-picker-panel.is-open { display: block; }
+    .cal-year-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      margin-bottom: 10px;
+    }
+    .cal-year-label {
+      font-weight: 680; font-size: 14px; letter-spacing: -.01em;
+      font-variant-numeric: tabular-nums;
+    }
+    .cal-year-btn {
+      display: grid; place-items: center;
+      width: 32px; height: 32px; padding: 0;
+      border: 1px solid var(--border); border-radius: 8px;
+      background: var(--surface-2); color: var(--text-2);
+    }
+    .cal-year-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--text); }
+    .cal-year-btn:disabled { opacity: .35; cursor: not-allowed; }
+    .cal-year-btn .icon { width: 16px; height: 16px; }
+    .cal-month-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;
+    }
+    .cal-month-btn {
+      height: 36px; border-radius: 9px; border: 1px solid transparent;
+      background: transparent; color: var(--text-2); font-weight: 550; font-size: 12.5px;
+    }
+    .cal-month-btn:hover:not(:disabled) {
+      background: var(--accent-soft); color: var(--text); border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+    }
+    .cal-month-btn[aria-current="true"] {
+      background: var(--accent); color: var(--on-accent); border-color: var(--accent);
+    }
+    .cal-month-btn:disabled {
+      opacity: .28; cursor: not-allowed;
+    }
+    .cal-footnote {
+      margin-top: 10px; font-size: 11.5px; color: var(--text-3);
+    }
+    .month-step {
+      display: inline-flex; align-items: center; gap: 2px;
+      padding: 3px; border-radius: 10px;
+      background: transparent; border: 1px dashed var(--border);
+    }
+    .month-step-btn {
+      display: grid; place-items: center;
+      width: 32px; height: 32px; padding: 0;
+      border: 0; border-radius: 8px;
+      background: transparent; color: var(--text-3);
+    }
+    .month-step-btn:hover:not(:disabled) {
+      background: var(--surface-2); color: var(--text);
+    }
+    .month-step-btn:disabled { opacity: .35; cursor: not-allowed; }
+    .month-step-btn .icon { width: 16px; height: 16px; }
+    .month-step-label {
+      font-size: 11px; color: var(--text-3); padding: 0 4px; white-space: nowrap;
+    }
+    .pie-layout {
+      display: grid; grid-template-columns: minmax(200px, 280px) 1fr;
+      gap: 18px; align-items: center;
+    }
+    .pie-svg { width: 100%; max-width: 260px; aspect-ratio: 1; display: block; margin: 0 auto; }
+    .pie-center-label {
+      fill: var(--text); font-size: 11px; font-weight: 650; text-anchor: middle;
+      font-family: var(--font);
+    }
+    .pie-center-sub {
+      fill: var(--text-3); font-size: 8px; text-anchor: middle; font-family: var(--mono);
+    }
+    .pie-legend {
+      list-style: none; display: grid; gap: 8px; margin: 0; padding: 0;
+    }
+    .pie-legend li {
+      display: grid; grid-template-columns: 12px 1fr auto auto; gap: 10px; align-items: center;
+      font-size: 13px;
+    }
+    .pie-legend .swatch {
+      width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--border);
+    }
+    .pie-legend .name { color: var(--text); font-weight: 550; }
+    .pie-legend .pct { color: var(--text-3); font-family: var(--mono); font-size: 12px; min-width: 3.5rem; text-align: right; }
+    .pie-legend .cents { color: var(--text); font-family: var(--mono); font-size: 12.5px; font-weight: 600; min-width: 6.5rem; text-align: right; }
+    .pie-legend .uncat .name { color: var(--text-2); font-style: italic; }
+    .pie-total {
+      margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--border);
+      display: flex; justify-content: space-between; font-size: 12.5px; color: var(--text-2);
+    }
+    .pie-total .num { color: var(--text); font-weight: 650; }
+    .marker {
+      border-left: 3px solid var(--marker);
+      margin: 0 0 12px;
+      padding: 8px 12px;
+      background: rgba(245, 184, 74, .08);
+      color: var(--text-2);
+      font-size: 12.5px;
+      border-radius: 0 10px 10px 0;
+    }
+    .marker strong { color: var(--marker); text-transform: uppercase; letter-spacing: .04em; font-size: 11px; }
+    .alert {
+      display: flex; gap: 14px; align-items: flex-start;
+      padding: 16px 18px; border-radius: var(--radius);
+      background: var(--neg-soft); border: 1px solid color-mix(in srgb, var(--neg) 35%, transparent);
+    }
+    .alert .icon { width: 20px; height: 20px; color: var(--neg); margin-top: 1px; }
+    .alert h4 { font-size: 14px; font-weight: 620; color: var(--neg); }
+    .alert code { font-family: var(--mono); font-size: 12px; background: var(--surface-2); padding: 1px 6px; border-radius: 6px; color: var(--text); }
+    .alert p { color: var(--text-2); font-size: 13px; margin-top: 4px; }
+    .alert-actions { display: flex; gap: 10px; margin-top: 12px; }
+
+    .state-panel { display: none; }
+    .state-panel.is-active { display: block; }
+
+    @media (max-width: 980px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar {
+        position: static; height: auto; flex-direction: row; align-items: center;
+        overflow-x: auto; padding: 12px 18px; border-right: 0; border-bottom: 1px solid var(--sidebar-border);
+      }
+      .nav { flex-direction: row; }
+      .nav-label, .vault-card { display: none; }
+      .topbar { top: 0; }
+      .kpis > .hero { grid-column: span 12; }
+      .kpis > .kpi { grid-column: span 4; }
+      .pie-layout { grid-template-columns: 1fr; }
+      .list-head { display: none; }
+      .list-row { grid-template-columns: 40px 1fr auto; }
+      .list-row .hide-sm { display: none; }
+      .review-note { margin-left: 0; }
+    }
+    @media (max-width: 720px) {
+      .kpis > .hero, .kpis > .kpi { grid-column: span 12; }
+      .topbar, .content { padding-left: 18px; padding-right: 18px; }
+    }
+  </style>
+</head>
+<body>
+  <svg width="0" height="0" class="sprite" aria-hidden="true" focusable="false">
+    <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h14V9.5"/></symbol>
+    <symbol id="i-wallet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="14" rx="3"/><path d="M3 10h18"/><circle cx="16.5" cy="15" r="1.2" fill="currentColor"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4.5 6v6c0 4.5 3.2 7.8 7.5 9 4.3-1.2 7.5-4.5 7.5-9V6z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 6-6 6 6 6"/></symbol>
+    <symbol id="i-cal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5"/><circle cx="12" cy="16" r=".8" fill="currentColor"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></symbol>
+  </svg>
+
+  <div class="review-bar" role="navigation" aria-label="Wireframe states">
+    <strong>Wireframe</strong>
+    <div class="tabs" role="tablist" aria-label="Pie states">
+      <button type="button" role="tab" aria-selected="true" data-state="labeled">1 · Labeled month</button>
+      <button type="button" role="tab" aria-selected="false" data-state="uncategorized">2 · Uncategorized 100%</button>
+      <button type="button" role="tab" aria-selected="false" data-state="empty">3 · No spend (empty)</button>
+      <button type="button" role="tab" aria-selected="false" data-state="block">4 · Block until labeled</button>
+    </div>
+    <span class="review-note">Overview shell = live Vault chrome · pie = History third block · SYNTHETIC cents only · plan step 0</span>
+  </div>
+
+  <div class="app">
+    <aside class="sidebar" aria-label="Primary">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 3h12l4 6-10 12L2 9z"/><path d="M2 9h20M9 3l3 18 3-18"/></svg>
+        </div>
+        <div class="brand-name">SAPPHIRE</div>
+      </div>
+
+      <nav class="nav" aria-label="Primary">
+        <div class="nav-label">Money</div>
+        <button type="button" aria-current="page"><svg class="icon"><use href="#i-home"/></svg>Overview</button>
+        <button type="button"><svg class="icon"><use href="#i-wallet"/></svg>Budget</button>
+        <button type="button"><svg class="icon"><use href="#i-doc"/></svg>Statements</button>
+        <div class="nav-label spaced">Verify</div>
+        <button type="button"><svg class="icon"><use href="#i-shield"/></svg>Audit</button>
+      </nav>
+
+      <div class="vault-card">
+        <div class="row"><span class="dot"></span>Local Vault online</div>
+        <ul>
+          <li><span>Parsing</span><span>On-device</span></li>
+          <li><span>PII to cloud</span><span>Never</span></li>
+          <li><span>Precision</span><span>Integer cents</span></li>
+        </ul>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="topbar-heading">
+          <span class="topbar-kicker">Private financial workspace</span>
+          <div class="topbar-title">Overview</div>
+        </div>
+        <div class="topbar-actions">
+          <button type="button" id="theme-toggle" class="theme-toggle" aria-label="Switch to light theme" title="Switch to light theme">
+            <svg class="icon icon-moon"><use href="#i-moon"/></svg>
+            <svg class="icon icon-sun"><use href="#i-sun"/></svg>
+          </button>
+          <button type="button" class="btn btn-primary"><svg class="icon"><use href="#i-upload"/></svg>Upload statement</button>
+        </div>
+      </header>
+
+      <div class="content" id="pane-vault-body">
+        <section class="view" id="account-overview" data-nav="overview">
+          <header class="page-head">
+            <h1>Account overview</h1>
+            <p>Balances from your latest statements</p>
+          </header>
+
+          <div class="kpis">
+            <div class="card hero">
+              <div class="eyebrow">Liquid cash</div>
+              <div class="value num">$12,034.85</div>
+              <div class="meta">
+                <span class="chip chip-pos num">+$412.10</span>
+                <span>checking &amp; savings · 2 accounts</span>
+              </div>
+            </div>
+            <div class="card kpi">
+              <div class="eyebrow">Brokerage funds</div>
+              <div class="value num">$88,000.00</div>
+              <div class="foot"><span>Non-liquid cash &amp; invested funds</span></div>
+            </div>
+            <div class="card kpi">
+              <div class="eyebrow">Ready to Assign</div>
+              <div class="value num">$1,200.00</div>
+              <div class="foot">
+                <span>Unbudgeted dollars</span>
+                <button type="button" class="btn-link">Assign →</button>
+              </div>
+            </div>
+            <div class="card kpi">
+              <div class="eyebrow">Last statement</div>
+              <div class="value">2026-10-31</div>
+              <div class="foot">
+                <span>Schwab *0000</span>
+                <span class="chip chip-accent">Stored</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h2>Accounts</h2>
+                <p>Opening to closing per statement period. Select a row for transactions.</p>
+              </div>
+              <span class="chip chip-neutral">2 accounts</span>
+            </div>
+            <div class="list-head">
+              <span></span><span>Account</span><span class="hide-sm">Period</span>
+              <span class="amount-col hide-sm">Opening</span><span class="amount-col">Closing</span><span></span>
+            </div>
+            <ul class="list">
+              <li>
+                <button type="button" class="list-row">
+                  <span class="avatar av-schwab">S</span>
+                  <span>
+                    <span class="strong">Schwab</span>
+                    <span class="sub">Checking · *0000 · <span class="chip chip-neutral">Liquid</span></span>
+                  </span>
+                  <span class="sub hide-sm"><span class="period">2026-10-01 → 2026-10-31</span></span>
+                  <span class="amount-col muted num hide-sm">$5,622.75</span>
+                  <span class="amount-col">
+                    <span class="strong num">$6,034.85</span>
+                    <span class="chip chip-pos num">+$412.10</span>
+                  </span>
+                  <svg class="chev"><use href="#i-chev"/></svg>
+                </button>
+              </li>
+              <li>
+                <button type="button" class="list-row">
+                  <span class="avatar av-chase">C</span>
+                  <span>
+                    <span class="strong">Chase</span>
+                    <span class="sub">Credit card · *0002 · <span class="chip chip-neutral">Credit</span></span>
+                  </span>
+                  <span class="sub hide-sm"><span class="period">2026-10-01 → 2026-10-31</span></span>
+                  <span class="amount-col muted num hide-sm">$0.00</span>
+                  <span class="amount-col">
+                    <span class="strong num">$32.82</span>
+                    <span class="chip chip-neg num">+$32.82</span>
+                  </span>
+                  <svg class="chev"><use href="#i-chev"/></svg>
+                </button>
+              </li>
+            </ul>
+          </div>
+
+          <!-- History: shipped blocks 1–2 + proposed pie block 3 -->
+          <div class="card" id="overview-history">
+            <div class="card-head">
+              <div>
+                <h2>History</h2>
+                <p>Closing balances, pipeline income vs spend, and spend by merchant category (month).</p>
+              </div>
+              <span class="chip chip-neutral">Vault series</span>
+            </div>
+
+            <!-- Block 1: shipped -->
+            <div class="history-block">
+              <div class="eyebrow">Closing balances (statement end)</div>
+              <div class="history-chart-wrap" aria-label="Balance history">
+                <svg class="history-chart" viewBox="0 0 320 100" role="img" aria-label="SYNTHETIC liquid closing balances">
+                  <polyline class="history-line-liquid" points="20,70 80,55 140,50 200,40 260,35 300,30" />
+                  <polyline class="history-line-account" points="20,80 80,78 140,60 200,58 260,50 300,48" />
+                  <text class="history-axis-label" x="20" y="95">Jun</text>
+                  <text class="history-axis-label" x="140" y="95">Aug</text>
+                  <text class="history-axis-label" x="280" y="95">Oct</text>
+                </svg>
+                <div class="history-legend">
+                  <span><i class="swatch swatch-liquid"></i>Liquid total</span>
+                  <span><i class="swatch swatch-account"></i>Schwab Checking *0000</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Block 2: shipped (pipeline TransactionCategory) -->
+            <div class="history-block">
+              <div class="eyebrow">Category income / spend (by month)</div>
+              <div class="history-chart-wrap" aria-label="Category history">
+                <svg class="history-chart" viewBox="0 0 320 100" role="img" aria-label="SYNTHETIC pipeline category bars">
+                  <rect class="history-bar-income" x="30" y="40" width="18" height="40" />
+                  <rect class="history-bar-spend" x="52" y="55" width="18" height="25" />
+                  <rect class="history-bar-income" x="100" y="30" width="18" height="50" />
+                  <rect class="history-bar-spend" x="122" y="50" width="18" height="30" />
+                  <rect class="history-bar-income" x="170" y="35" width="18" height="45" />
+                  <rect class="history-bar-spend" x="192" y="45" width="18" height="35" />
+                  <rect class="history-bar-income" x="240" y="25" width="18" height="55" />
+                  <rect class="history-bar-spend" x="262" y="60" width="18" height="20" />
+                  <text class="history-axis-label" x="40" y="95">Jul</text>
+                  <text class="history-axis-label" x="110" y="95">Aug</text>
+                  <text class="history-axis-label" x="180" y="95">Sep</text>
+                  <text class="history-axis-label" x="250" y="95">Oct</text>
+                </svg>
+                <div class="history-legend">
+                  <span><i class="swatch swatch-income"></i>Income (deposit…)</span>
+                  <span><i class="swatch swatch-spend"></i>Spend (purchase/withdrawal…)</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Block 3: PROPOSED spend-by-category pie -->
+            <div class="history-block" id="spend-by-category">
+              <div class="eyebrow">Spend by category (month)</div>
+              <div class="marker">
+                <strong>Proposed</strong>
+                Merchant/budget <code>spend_categories</code> — not pipeline <code>withdrawal</code>/<code>deposit</code>, not envelope balances.
+                Legend = integer cents. <em>Primary:</em> calendar jumps month + year across statement history.
+                <em>Secondary:</em> ← → steps one month. (Open Q: calendar month vs statement period.)
+              </div>
+
+              <div class="pie-toolbar">
+                <div class="pie-period">
+                  <div class="month-picker">
+                    <button type="button" class="month-picker-trigger" id="pie-cal-trigger"
+                            aria-haspopup="dialog" aria-expanded="false" aria-controls="pie-cal-panel">
+                      <span class="cal-icon" aria-hidden="true"><svg class="icon"><use href="#i-cal"/></svg></span>
+                      <span class="month-picker-copy">
+                        <span class="primary" id="pie-month-label">October 2026</span>
+                        <span class="hint">Jump month / year · statement history</span>
+                      </span>
+                    </button>
+                    <div class="month-picker-panel" id="pie-cal-panel" role="dialog" aria-label="Pick calendar month">
+                      <div class="cal-year-row">
+                        <button type="button" class="cal-year-btn" id="pie-cal-year-prev" aria-label="Previous year">
+                          <svg class="icon"><use href="#i-back"/></svg>
+                        </button>
+                        <div class="cal-year-label" id="pie-cal-year">2026</div>
+                        <button type="button" class="cal-year-btn" id="pie-cal-year-next" aria-label="Next year">
+                          <svg class="icon"><use href="#i-chev"/></svg>
+                        </button>
+                      </div>
+                      <div class="cal-month-grid" id="pie-cal-grid" role="listbox" aria-label="Months"></div>
+                      <p class="cal-footnote">Months with Vault spend data are enabled; others stay muted (wireframe: 2024–2026 seeded).</p>
+                    </div>
+                  </div>
+                  <div class="month-step" role="group" aria-label="Step one month">
+                    <button type="button" class="month-step-btn" id="pie-month-prev" aria-label="Previous month">
+                      <svg class="icon"><use href="#i-back"/></svg>
+                    </button>
+                    <span class="month-step-label">Step</span>
+                    <button type="button" class="month-step-btn" id="pie-month-next" aria-label="Next month">
+                      <svg class="icon"><use href="#i-chev"/></svg>
+                    </button>
+                  </div>
+                </div>
+                <span class="chip chip-accent">Calendar primary</span>
+              </div>
+
+              <!-- State 1: labeled happy path -->
+              <div class="state-panel is-active" data-panel="labeled" id="pie-body">
+                <div class="history-chart-wrap" aria-label="Spend by category pie">
+                  <div class="pie-layout">
+                    <svg class="pie-svg" viewBox="0 0 120 120" role="img" aria-labelledby="pie-title pie-desc">
+                      <title id="pie-title">SYNTHETIC spend by category · October 2026</title>
+                      <desc id="pie-desc">Pie of spend category totals in integer cents for the selected month.</desc>
+                      <!-- Donut slices via stroke-dasharray on circle; total circumference ≈ 314.16 → use 314 int units -->
+                      <g transform="translate(60,60) rotate(-90)">
+                        <!-- Rent 185000 / 290841 ≈ 63.6% → 200 units -->
+                        <circle r="42" fill="none" stroke="#6f8cff" stroke-width="22"
+                          stroke-dasharray="200 114" stroke-dashoffset="0" />
+                        <!-- Groceries 45231 ≈ 15.6% → 49 -->
+                        <circle r="42" fill="none" stroke="#3ddc97" stroke-width="22"
+                          stroke-dasharray="49 265" stroke-dashoffset="-200" />
+                        <!-- Dining 15620 ≈ 5.4% → 17 -->
+                        <circle r="42" fill="none" stroke="#f5b84a" stroke-width="22"
+                          stroke-dasharray="17 297" stroke-dashoffset="-249" />
+                        <!-- Utilities 12840 ≈ 4.4% → 14 -->
+                        <circle r="42" fill="none" stroke="#9aafff" stroke-width="22"
+                          stroke-dasharray="14 300" stroke-dashoffset="-266" />
+                        <!-- Transport 8750 ≈ 3.0% → 9 -->
+                        <circle r="42" fill="none" stroke="#c084fc" stroke-width="22"
+                          stroke-dasharray="9 305" stroke-dashoffset="-280" />
+                        <!-- Uncategorized 23400 ≈ 8.0% → 25 -->
+                        <circle r="42" fill="none" stroke="#68758d" stroke-width="22"
+                          stroke-dasharray="25 289" stroke-dashoffset="-289" />
+                      </g>
+                      <circle cx="60" cy="60" r="28" fill="var(--surface-2)" />
+                      <text class="pie-center-label" x="60" y="57">Total spend</text>
+                      <text class="pie-center-sub" x="60" y="70">$2,908.41</text>
+                    </svg>
+                    <div>
+                      <ul class="pie-legend" aria-label="Category totals (integer cents)">
+                        <li>
+                          <span class="swatch" style="background:#6f8cff"></span>
+                          <span class="name">Rent</span>
+                          <span class="pct num">63%</span>
+                          <span class="cents num">$1,850.00</span>
+                        </li>
+                        <li>
+                          <span class="swatch" style="background:#3ddc97"></span>
+                          <span class="name">Groceries</span>
+                          <span class="pct num">15%</span>
+                          <span class="cents num">$452.31</span>
+                        </li>
+                        <li class="uncat">
+                          <span class="swatch" style="background:#68758d"></span>
+                          <span class="name">Uncategorized</span>
+                          <span class="pct num">8%</span>
+                          <span class="cents num">$234.00</span>
+                        </li>
+                        <li>
+                          <span class="swatch" style="background:#f5b84a"></span>
+                          <span class="name">Dining</span>
+                          <span class="pct num">5%</span>
+                          <span class="cents num">$156.20</span>
+                        </li>
+                        <li>
+                          <span class="swatch" style="background:#9aafff"></span>
+                          <span class="name">Utilities</span>
+                          <span class="pct num">4%</span>
+                          <span class="cents num">$128.40</span>
+                        </li>
+                        <li>
+                          <span class="swatch" style="background:#c084fc"></span>
+                          <span class="name">Transport</span>
+                          <span class="pct num">3%</span>
+                          <span class="cents num">$87.50</span>
+                        </li>
+                      </ul>
+                      <div class="pie-total">
+                        <span>SUM abs(spend) · labeled + Uncategorized</span>
+                        <span class="num">2,908.41 USD · 290841¢</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- State 2: spend exists, zero labels → Uncategorized 100% -->
+              <div class="state-panel" data-panel="uncategorized">
+                <div class="history-chart-wrap" aria-label="All spend uncategorized">
+                  <div class="pie-layout">
+                    <svg class="pie-svg" viewBox="0 0 120 120" role="img" aria-label="SYNTHETIC 100% Uncategorized">
+                      <g transform="translate(60,60)">
+                        <circle r="42" fill="none" stroke="#68758d" stroke-width="22" />
+                      </g>
+                      <circle cx="60" cy="60" r="28" fill="var(--surface-2)" />
+                      <text class="pie-center-label" x="60" y="57">Unlabeled</text>
+                      <text class="pie-center-sub" x="60" y="70">100%</text>
+                    </svg>
+                    <div>
+                      <ul class="pie-legend">
+                        <li class="uncat">
+                          <span class="swatch" style="background:#68758d"></span>
+                          <span class="name">Uncategorized</span>
+                          <span class="pct num">100%</span>
+                          <span class="cents num">$2,908.41</span>
+                        </li>
+                      </ul>
+                      <div class="pie-total">
+                        <span>Spend exists · zero spend_category labels</span>
+                        <span class="num">290841¢ → Uncategorized</span>
+                      </div>
+                      <p class="muted" style="margin-top:10px;font-size:12.5px">
+                        Open question #6 option A: still show the pie with a single Uncategorized slice (loud, not blank).
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- State 3: no spend txns in range -->
+              <div class="state-panel" data-panel="empty">
+                <div class="alert" role="alert">
+                  <svg class="icon"><use href="#i-alert"/></svg>
+                  <div>
+                    <h4>No spend in this month</h4>
+                    <p><code>HISTORY_SPEND_CATEGORY_EMPTY</code> — no outflow (<code>amount_cents &lt; 0</code>) in 2026-10. Pick another month or ingest statements with spend rows. Parallel to existing <code>HISTORY_*_EMPTY</code> codes.</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- State 4: alternative unlabeled UX — block pie until labels -->
+              <div class="state-panel" data-panel="block">
+                <div class="alert" role="alert">
+                  <svg class="icon"><use href="#i-alert"/></svg>
+                  <div>
+                    <h4>Label transactions to see the pie</h4>
+                    <p><code>HISTORY_SPEND_CATEGORY_UNLABELED</code> — 290841¢ of spend in 2026-10 has no <code>spend_category</code> label. Assign categories (manual / rules) before the series renders. Open question #6 option B.</p>
+                    <div class="alert-actions">
+                      <button type="button" class="btn btn-ghost btn-sm">Go to unlabeled spend →</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    (function () {
+      var tabs = document.querySelectorAll(".tabs [data-state]");
+      var panels = document.querySelectorAll(".state-panel");
+      var MONTH_NAMES = ["January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"];
+      var MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      // Synthetic Vault months with spend data (wireframe).
+      var available = {
+        "2024-11": true, "2024-12": true,
+        "2025-01": true, "2025-03": true, "2025-06": true, "2025-09": true, "2025-12": true,
+        "2026-01": true, "2026-02": true, "2026-03": true, "2026-04": true,
+        "2026-05": true, "2026-06": true, "2026-07": true, "2026-08": true,
+        "2026-09": true, "2026-10": true
+      };
+      var yearMin = 2024;
+      var yearMax = 2026;
+      var selected = { year: 2026, month: 10 };
+      var viewYear = 2026;
+
+      var monthLabel = document.getElementById("pie-month-label");
+      var prevBtn = document.getElementById("pie-month-prev");
+      var nextBtn = document.getElementById("pie-month-next");
+      var pieTitle = document.getElementById("pie-title");
+      var trigger = document.getElementById("pie-cal-trigger");
+      var panel = document.getElementById("pie-cal-panel");
+      var yearLabel = document.getElementById("pie-cal-year");
+      var yearPrev = document.getElementById("pie-cal-year-prev");
+      var yearNext = document.getElementById("pie-cal-year-next");
+      var grid = document.getElementById("pie-cal-grid");
+
+      function keyFor(y, m) {
+        return y + "-" + String(m).padStart(2, "0");
+      }
+
+      function labelFor(y, m) {
+        return MONTH_NAMES[m - 1] + " " + y;
+      }
+
+      function orderedKeys() {
+        return Object.keys(available).sort();
+      }
+
+      function setState(name) {
+        tabs.forEach(function (btn) {
+          btn.setAttribute("aria-selected", btn.getAttribute("data-state") === name ? "true" : "false");
+        });
+        panels.forEach(function (panelEl) {
+          panelEl.classList.toggle("is-active", panelEl.getAttribute("data-panel") === name);
+        });
+      }
+
+      tabs.forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          setState(btn.getAttribute("data-state"));
+        });
+      });
+
+      function setOpen(open) {
+        if (!panel || !trigger) {
+          return;
+        }
+        panel.classList.toggle("is-open", open);
+        trigger.setAttribute("aria-expanded", open ? "true" : "false");
+        if (open) {
+          viewYear = selected.year;
+          renderCalendar();
+        }
+      }
+
+      function renderCalendar() {
+        if (!grid || !yearLabel) {
+          return;
+        }
+        yearLabel.textContent = String(viewYear);
+        if (yearPrev) {
+          yearPrev.disabled = viewYear <= yearMin;
+        }
+        if (yearNext) {
+          yearNext.disabled = viewYear >= yearMax;
+        }
+        grid.innerHTML = "";
+        for (var m = 1; m <= 12; m += 1) {
+          var btn = document.createElement("button");
+          var k = keyFor(viewYear, m);
+          btn.type = "button";
+          btn.className = "cal-month-btn";
+          btn.setAttribute("role", "option");
+          btn.textContent = MONTH_SHORT[m - 1];
+          btn.disabled = !available[k];
+          if (selected.year === viewYear && selected.month === m) {
+            btn.setAttribute("aria-current", "true");
+          }
+          btn.setAttribute("data-month", String(m));
+          btn.addEventListener("click", (function (monthNum) {
+            return function () {
+              selected = { year: viewYear, month: monthNum };
+              setOpen(false);
+              renderPeriod();
+            };
+          })(m));
+          grid.appendChild(btn);
+        }
+      }
+
+      function renderPeriod() {
+        var k = keyFor(selected.year, selected.month);
+        var label = labelFor(selected.year, selected.month);
+        if (monthLabel) {
+          monthLabel.textContent = label;
+        }
+        if (pieTitle) {
+          pieTitle.textContent = "SYNTHETIC spend by category · " + label;
+        }
+        var keys = orderedKeys();
+        var idx = keys.indexOf(k);
+        if (prevBtn) {
+          prevBtn.disabled = idx <= 0;
+        }
+        if (nextBtn) {
+          nextBtn.disabled = idx < 0 || idx >= keys.length - 1;
+        }
+        if (panel && panel.classList.contains("is-open")) {
+          renderCalendar();
+        }
+        // Wireframe only: period change keeps current state panel; product would re-query series.
+      }
+
+      function stepMonth(delta) {
+        var keys = orderedKeys();
+        var idx = keys.indexOf(keyFor(selected.year, selected.month));
+        var next = idx + delta;
+        if (next < 0 || next >= keys.length) {
+          return;
+        }
+        var parts = keys[next].split("-");
+        selected = { year: parseInt(parts[0], 10), month: parseInt(parts[1], 10) };
+        viewYear = selected.year;
+        renderPeriod();
+      }
+
+      if (trigger) {
+        trigger.addEventListener("click", function () {
+          setOpen(!(panel && panel.classList.contains("is-open")));
+        });
+      }
+      if (yearPrev) {
+        yearPrev.addEventListener("click", function () {
+          if (viewYear > yearMin) {
+            viewYear -= 1;
+            renderCalendar();
+          }
+        });
+      }
+      if (yearNext) {
+        yearNext.addEventListener("click", function () {
+          if (viewYear < yearMax) {
+            viewYear += 1;
+            renderCalendar();
+          }
+        });
+      }
+      if (prevBtn) {
+        prevBtn.addEventListener("click", function () { stepMonth(-1); });
+      }
+      if (nextBtn) {
+        nextBtn.addEventListener("click", function () { stepMonth(1); });
+      }
+      document.addEventListener("click", function (event) {
+        if (!panel || !trigger || !panel.classList.contains("is-open")) {
+          return;
+        }
+        var t = event.target;
+        if (panel.contains(t) || trigger.contains(t)) {
+          return;
+        }
+        setOpen(false);
+      });
+      document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") {
+          setOpen(false);
+        }
+      });
+
+      renderPeriod();
+
+      var toggle = document.getElementById("theme-toggle");
+      if (toggle) {
+        toggle.addEventListener("click", function () {
+          var next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+          document.documentElement.setAttribute("data-theme", next);
+          var label = next === "dark" ? "Switch to light theme" : "Switch to dark theme";
+          toggle.setAttribute("aria-label", label);
+          toggle.setAttribute("title", label);
+        });
+      }
+    })();
+  </script>
+</body>
+</html>

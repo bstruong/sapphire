@@ -38,3 +38,4 @@ Shape Up intentionally avoids high-fidelity pixel comps as a gating artifact. Pr
 | [schwab_checking_copy_note.md](schwab_checking_copy_note.md) | **Proposed** — Supported-upload copy includes Schwab Bank **checking** ([pitch](../pitch_schwab_checking.md)) |
 | [history_charts_wireframe.html](history_charts_wireframe.html) | **Built** — Overview History: closing balances over periods + category income/spend by month ([pitch](../pitch_history_charts.md)) |
 | [statement_history_wireframe.html](statement_history_wireframe.html) | **Built** — Full statement history from Recent → View all (account/year filters, Open → ledger) |
+| [category_spend_pie_wireframe.html](category_spend_pie_wireframe.html) | **Proposed** — Overview History third block: spend-by-category pie, calendar month/year primary, Uncategorized, integer cents ([pitch](../pitch_category_spend_pie.md)) |
