@@ -42,6 +42,8 @@ Three concepts stay distinct:
 
 **Build order (hard deps):** `0 pitch/wireframe → 1 payee inventory → 2 payee ingest → 3 taxonomy + manual label → 5 pie SVG`. Rule assist (4) and Vault LLM suggest (6) are optional after 3. Envelope↔txn link is a parallel track only if pie becomes envelope-based (PM said no for v1).
 
+**Step 1 inventory:** [`payee_signal_inventory.md`](payee_signal_inventory.md) — Chase card PDFs carry merchant-ish descriptions; Schwab checking PDFs are opaque bank types (no invent; optional export path later).
+
 **Aggregation:** for selected calendar month, `SUM(ABS(amount_cents))` where `amount_cents < 0`, group by spend-category slug; unlabeled → **Uncategorized**. Integer cents only; SVG from ints; display via `usd_cents`. Fail loud on unknown slug / missing FK.
 
 ## Visuals (shaping)
