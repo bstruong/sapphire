@@ -90,12 +90,19 @@ def _ledger(conn: psycopg.Connection) -> list[tuple[str, str, object]]:
 
 def test_packaged_migrations_start_at_baseline_snapshot() -> None:
     discovered = discover_migrations(SCHEMA_PATH, DEFAULT_MIGRATIONS_DIR)
-    assert [item.version for item in discovered] == ["0001", "0002", "0003", "0004"]
+    assert [item.version for item in discovered] == [
+        "0001",
+        "0002",
+        "0003",
+        "0004",
+        "0005",
+    ]
     assert discovered[0].path == SCHEMA_PATH
     assert discovered[0].path.is_file()
     assert discovered[1].path.name.startswith("0002_")
     assert discovered[2].path.name.startswith("0003_")
     assert discovered[3].path.name.startswith("0004_")
+    assert discovered[4].path.name.startswith("0005_")
 
 
 def test_fresh_apply_reaches_holdings_with_integer_cents(
@@ -104,20 +111,22 @@ def test_fresh_apply_reaches_holdings_with_integer_cents(
     with psycopg.connect(empty_database_url) as conn:
         applied = apply_migrations(conn)
         conn.commit()
-        assert applied == ["0001", "0002", "0003", "0004"]
+        assert applied == ["0001", "0002", "0003", "0004", "0005"]
         assert _column_type(conn, "holdings", "market_value_cents") == "bigint"
         assert _column_type(conn, "statements", "opening_balance_cents") == "bigint"
         assert _column_type(conn, "envelopes", "balance_cents") == "bigint"
         assert _column_type(conn, "transactions", "payee") == "text"
         assert _column_type(conn, "spend_categories", "slug") == "text"
         assert _column_type(conn, "transaction_spend_labels", "source") == "text"
+        assert _column_type(conn, "spend_label_rules", "payee_pattern") == "text"
         ledger = _ledger(conn)
-        assert len(ledger) == 4
+        assert len(ledger) == 5
         assert ledger[0][0] == "0001"
         assert ledger[0][1] == migration_checksum(SCHEMA_PATH)
         assert ledger[1][0] == "0002"
         assert ledger[2][0] == "0003"
         assert ledger[3][0] == "0004"
+        assert ledger[4][0] == "0005"
 
 
 def test_init_db_on_fresh_database_uses_migration_runner(
@@ -129,7 +138,13 @@ def test_init_db_on_fresh_database_uses_migration_runner(
         assert _column_type(conn, "envelopes", "balance_cents") == "bigint"
         assert _column_type(conn, "transactions", "payee") == "text"
         assert _column_type(conn, "spend_categories", "slug") == "text"
-        assert [row[0] for row in _ledger(conn)] == ["0001", "0002", "0003", "0004"]
+        assert [row[0] for row in _ledger(conn)] == [
+            "0001",
+            "0002",
+            "0003",
+            "0004",
+            "0005",
+        ]
 
     standalone = psycopg.connect(empty_database_url)
     try:
@@ -139,6 +154,7 @@ def test_init_db_on_fresh_database_uses_migration_runner(
             "0002",
             "0003",
             "0004",
+            "0005",
         ]
     finally:
         standalone.close()
@@ -146,7 +162,7 @@ def test_init_db_on_fresh_database_uses_migration_runner(
 
 def test_second_apply_is_a_noop(empty_database_url: str) -> None:
     with psycopg.connect(empty_database_url) as conn:
-        assert apply_migrations(conn) == ["0001", "0002", "0003", "0004"]
+        assert apply_migrations(conn) == ["0001", "0002", "0003", "0004", "0005"]
         conn.commit()
         before = _ledger(conn)
         conn.execute("DROP TABLE holdings")
