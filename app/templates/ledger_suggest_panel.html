@@ -1,16 +1,39 @@
-{# Bulk suggest labels panel (B2). Fragment target: #ledger-suggest-panel #}
+{# Bulk suggest labels panel (B2 + P3 statement scope). Fragment: #ledger-suggest-panel #}
 <div id="ledger-suggest-panel" class="suggest-panel" data-nav="statements">
   <div class="card suggest-card">
     <div class="card-head">
       <div>
         <p class="eyebrow">Bulk correct</p>
         <h2>Suggest labels</h2>
-        <p>Group-by-payee Accept / Reject. Nothing writes until Accept. Opaque EW stays manual-only.</p>
+        <p>
+          {% if suggest.statement_id %}
+          Scoped to this statement. Group-by-payee Accept / Reject. Nothing writes until Accept.
+          {% else %}
+          Group-by-payee Accept / Reject. Nothing writes until Accept. Opaque EW stays manual-only.
+          {% endif %}
+        </p>
       </div>
     </div>
     <div class="card-body suggest-body">
       <div class="scope-bar">
         <div class="scope-left">
+          {% if suggest.statement_id %}
+          <form class="suggest-month-form"
+                hx-post="/api/v1/dashboard/ledger/suggest/run"
+                hx-target="#ledger-suggest-panel"
+                hx-swap="outerHTML">
+            <input type="hidden" name="statement_id" value="{{ suggest.statement_id }}">
+            {% if suggest.pie_year %}<input type="hidden" name="pie_year" value="{{ suggest.pie_year }}">{% endif %}
+            {% if suggest.pie_month %}<input type="hidden" name="pie_month" value="{{ suggest.pie_month }}">{% endif %}
+            <span class="chip chip-accent">This statement</span>
+            {% if suggest.pie_year and suggest.pie_month %}
+            <span class="chip chip-neutral">Period {{ suggest.pie_year }}-{{ suggest.pie_month }}</span>
+            {% endif %}
+            <button type="submit" class="btn btn-primary btn-sm">
+              <svg class="icon"><use href="#i-spark"/></svg>Suggest for this statement
+            </button>
+          </form>
+          {% else %}
           <form class="suggest-month-form"
                 hx-post="/api/v1/dashboard/ledger/suggest/run"
                 hx-target="#ledger-suggest-panel"
@@ -29,6 +52,7 @@
               <svg class="icon"><use href="#i-spark"/></svg>Run suggest
             </button>
           </form>
+          {% endif %}
           <div class="scope-chips" aria-label="Scope counts">
             <span class="chip chip-neutral">Unlabeled spend: <span class="num">{{ suggest.unlabeled_count }}</span></span>
             <span class="chip chip-warn">Opaque: <span class="num">{{ suggest.opaque_count }}</span></span>
@@ -40,8 +64,9 @@
           <form hx-post="/api/v1/dashboard/ledger/suggest/accept-all-rules"
                 hx-target="#ledger-suggest-panel" hx-swap="outerHTML">
             <input type="hidden" name="batch_id" value="{{ suggest.batch_id }}">
-            <input type="hidden" name="pie_year" value="{{ suggest.pie_year }}">
-            <input type="hidden" name="pie_month" value="{{ suggest.pie_month }}">
+            {% if suggest.statement_id %}<input type="hidden" name="statement_id" value="{{ suggest.statement_id }}">{% endif %}
+            {% if suggest.pie_year %}<input type="hidden" name="pie_year" value="{{ suggest.pie_year }}">{% endif %}
+            {% if suggest.pie_month %}<input type="hidden" name="pie_month" value="{{ suggest.pie_month }}">{% endif %}
             <input type="hidden" name="vault_available" value="{{ '1' if suggest.vault_available else '0' }}">
             <button type="submit" class="btn btn-ghost btn-sm"
                     {% if not suggest.rule_groups %}disabled{% endif %}>Accept all rule hits</button>
@@ -49,8 +74,9 @@
           <form hx-post="/api/v1/dashboard/ledger/suggest/reject-all-vault"
                 hx-target="#ledger-suggest-panel" hx-swap="outerHTML">
             <input type="hidden" name="batch_id" value="{{ suggest.batch_id }}">
-            <input type="hidden" name="pie_year" value="{{ suggest.pie_year }}">
-            <input type="hidden" name="pie_month" value="{{ suggest.pie_month }}">
+            {% if suggest.statement_id %}<input type="hidden" name="statement_id" value="{{ suggest.statement_id }}">{% endif %}
+            {% if suggest.pie_year %}<input type="hidden" name="pie_year" value="{{ suggest.pie_year }}">{% endif %}
+            {% if suggest.pie_month %}<input type="hidden" name="pie_month" value="{{ suggest.pie_month }}">{% endif %}
             <input type="hidden" name="vault_available" value="{{ '1' if suggest.vault_available else '0' }}">
             <button type="submit" class="btn btn-danger btn-sm"
                     {% if not suggest.vault_groups %}disabled{% endif %}>Reject all Vault</button>
@@ -98,7 +124,7 @@
       <div class="alert alert-info">
         <svg class="icon"><use href="#i-spark"/></svg>
         <div>
-          <h4>Staging empty — Run suggest to compute groups</h4>
+          <h4>Staging empty — {% if suggest.statement_id %}Suggest for this statement{% else %}Run suggest{% endif %} to compute groups</h4>
           <p>
             Idempotent recompute. Does <strong>not</strong> write <code>transaction_spend_labels</code>.
             Opaque rows are filtered out before rules / Vault. Closed slug set only.
@@ -130,8 +156,9 @@
                   hx-target="#ledger-suggest-panel" hx-swap="outerHTML">
               <input type="hidden" name="batch_id" value="{{ suggest.batch_id }}">
               <input type="hidden" name="group_key" value="{{ group.group_key }}">
-              <input type="hidden" name="pie_year" value="{{ suggest.pie_year }}">
-              <input type="hidden" name="pie_month" value="{{ suggest.pie_month }}">
+              {% if suggest.statement_id %}<input type="hidden" name="statement_id" value="{{ suggest.statement_id }}">{% endif %}
+              {% if suggest.pie_year %}<input type="hidden" name="pie_year" value="{{ suggest.pie_year }}">{% endif %}
+              {% if suggest.pie_month %}<input type="hidden" name="pie_month" value="{{ suggest.pie_month }}">{% endif %}
               <input type="hidden" name="vault_available" value="{{ '1' if suggest.vault_available else '0' }}">
               <label class="faint" for="slug-{{ group.group_key }}">Proposed slug</label>
               <select id="slug-{{ group.group_key }}" name="slug" class="select"
@@ -152,8 +179,9 @@
                   hx-target="#ledger-suggest-panel" hx-swap="outerHTML">
               <input type="hidden" name="batch_id" value="{{ suggest.batch_id }}">
               <input type="hidden" name="group_key" value="{{ group.group_key }}">
-              <input type="hidden" name="pie_year" value="{{ suggest.pie_year }}">
-              <input type="hidden" name="pie_month" value="{{ suggest.pie_month }}">
+              {% if suggest.statement_id %}<input type="hidden" name="statement_id" value="{{ suggest.statement_id }}">{% endif %}
+              {% if suggest.pie_year %}<input type="hidden" name="pie_year" value="{{ suggest.pie_year }}">{% endif %}
+              {% if suggest.pie_month %}<input type="hidden" name="pie_month" value="{{ suggest.pie_month }}">{% endif %}
               <input type="hidden" name="vault_available" value="{{ '1' if suggest.vault_available else '0' }}">
               <button type="submit" class="btn btn-ghost btn-sm">Reject</button>
             </form>
@@ -161,7 +189,7 @@
           {% endfor %}
         </div>
         {% else %}
-        <div class="empty-lane">No rule hits this month. Seed a payee→slug rule or label manually.</div>
+        <div class="empty-lane">No rule hits this scope. Seed a payee→slug rule or label manually.</div>
         {% endif %}
       </div>
 
@@ -195,8 +223,9 @@
                   hx-target="#ledger-suggest-panel" hx-swap="outerHTML">
               <input type="hidden" name="batch_id" value="{{ suggest.batch_id }}">
               <input type="hidden" name="group_key" value="{{ group.group_key }}">
-              <input type="hidden" name="pie_year" value="{{ suggest.pie_year }}">
-              <input type="hidden" name="pie_month" value="{{ suggest.pie_month }}">
+              {% if suggest.statement_id %}<input type="hidden" name="statement_id" value="{{ suggest.statement_id }}">{% endif %}
+              {% if suggest.pie_year %}<input type="hidden" name="pie_year" value="{{ suggest.pie_year }}">{% endif %}
+              {% if suggest.pie_month %}<input type="hidden" name="pie_month" value="{{ suggest.pie_month }}">{% endif %}
               <input type="hidden" name="vault_available" value="1">
               <label class="faint" for="slug-v-{{ group.group_key }}">Proposed slug</label>
               <select id="slug-v-{{ group.group_key }}" name="slug" class="select">
@@ -216,8 +245,9 @@
                   hx-target="#ledger-suggest-panel" hx-swap="outerHTML">
               <input type="hidden" name="batch_id" value="{{ suggest.batch_id }}">
               <input type="hidden" name="group_key" value="{{ group.group_key }}">
-              <input type="hidden" name="pie_year" value="{{ suggest.pie_year }}">
-              <input type="hidden" name="pie_month" value="{{ suggest.pie_month }}">
+              {% if suggest.statement_id %}<input type="hidden" name="statement_id" value="{{ suggest.statement_id }}">{% endif %}
+              {% if suggest.pie_year %}<input type="hidden" name="pie_year" value="{{ suggest.pie_year }}">{% endif %}
+              {% if suggest.pie_month %}<input type="hidden" name="pie_month" value="{{ suggest.pie_month }}">{% endif %}
               <input type="hidden" name="vault_available" value="1">
               <button type="submit" class="btn btn-ghost btn-sm">Reject</button>
             </form>

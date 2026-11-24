@@ -422,3 +422,259 @@ class TestBulkSuggestHTMX:
         assert resp.status_code == 200
         labels = get_labels_by_transaction_ids(db_conn, [txns[0].transaction_id])
         assert labels[txns[0].transaction_id].source == "rule"
+
+
+def _seed_statement(
+    db_conn: psycopg.Connection,
+    *,
+    basename: str,
+    content_sha: str,
+    rows: list[tuple[str | None, str, int]],
+    start: datetime.date,
+    end: datetime.date,
+) -> tuple[UUID, list[CanonicalTransaction]]:
+    """Seed one statement with unlabeled outflows; return (statement_id, txns)."""
+    payload = RawPayload(
+        content_sha256=content_sha,
+        byte_length=800,
+        original_basename=basename,
+    )
+    run = ExtractionRun(
+        raw_payload_id=payload.raw_payload_id,
+        adapter_id="standard_depository",
+        adapter_version="1.0.0",
+        status=RunStatus.VALIDATED,
+    )
+    page = RawPage(run_id=run.run_id, page_number=1, page_text="Statement scope")
+    persist_raw_extraction(
+        db_conn, RawExtraction(payload=payload, run=run, pages=[page])
+    )
+    account = Account(
+        institution="SYNTHETIC Chase",
+        account_mask="*0000",
+        account_domain=AccountDomain.DEPOSITORY,
+        account_type=AccountType.CHECKING,
+    )
+    statement = CanonicalStatement(
+        account_id=account.account_id,
+        run_id=run.run_id,
+        raw_payload_id=payload.raw_payload_id,
+        statement_start_date=start,
+        statement_end_date=end,
+        opening_balance_cents=0,
+        closing_balance_cents=-sum(abs(a) for _, _, a in rows if a < 0),
+        net_change_cents=-sum(abs(a) for _, _, a in rows if a < 0),
+    )
+    summary = DepositorySummary(
+        statement_id=statement.statement_id,
+        deposits_cents=0,
+        withdrawals_cents=sum(abs(a) for _, _, a in rows if a < 0),
+        interest_paid_cents=0,
+        fees_cents=0,
+    )
+    txns: list[CanonicalTransaction] = []
+    day = start.day if start.day <= 27 else 2
+    for payee, description, amount_cents in rows:
+        txns.append(
+            CanonicalTransaction(
+                statement_id=statement.statement_id,
+                post_date=datetime.date(start.year, start.month, day),
+                amount_cents=amount_cents,
+                description=description,
+                transaction_category=TransactionCategory.WITHDRAWAL,
+                payee=payee,
+            )
+        )
+        day += 1
+    persist_canonical_statement(db_conn, account, statement, summary, txns)
+    db_conn.commit()
+    return statement.statement_id, txns
+
+
+class TestStatementScopedSuggest:
+    def test_statement_scope_stages_only_that_statement(
+        self, db_conn: psycopg.Connection
+    ) -> None:
+        cats = {c.slug: c for c in list_spend_categories(db_conn)}
+        insert_spend_label_rule(
+            db_conn,
+            payee_pattern="SYNTHETIC PG&E",
+            spend_category_id=cats["utilities"].spend_category_id,
+        )
+        db_conn.commit()
+        stmt_a, txns_a = _seed_statement(
+            db_conn,
+            basename="stmt_a.pdf",
+            content_sha="a" * 64,
+            rows=[
+                ("SYNTHETIC PG&E", "SYNTHETIC PG&E A", -1100),
+                ("SYNTHETIC PG&E", "SYNTHETIC PG&E A2", -1200),
+                (None, "Electronic Withdrawal", -5000),
+            ],
+            start=datetime.date(2026, 10, 1),
+            end=datetime.date(2026, 10, 31),
+        )
+        _stmt_b, txns_b = _seed_statement(
+            db_conn,
+            basename="stmt_b.pdf",
+            content_sha="b" * 64,
+            rows=[("SYNTHETIC PG&E", "SYNTHETIC PG&E B", -9900)],
+            start=datetime.date(2026, 10, 1),
+            end=datetime.date(2026, 10, 31),
+        )
+        batch = run_suggest(db_conn, statement_id=stmt_a, vault_client=_DownVault())
+        db_conn.commit()
+        assert batch.statement_id == stmt_a
+        assert batch.opaque_count == 1
+        assert batch.suggestable_count == 2
+        assert len(batch.rule_groups) == 1
+        staged = {UUID(x) for x in batch.rule_groups[0].transaction_ids}
+        assert staged == {txns_a[0].transaction_id, txns_a[1].transaction_id}
+        assert txns_b[0].transaction_id not in staged
+
+        written = accept_suggestion_group(
+            db_conn,
+            batch_id=batch.batch_id,
+            group_key=batch.rule_groups[0].group_key,
+            slug="utilities",
+        )
+        db_conn.commit()
+        assert written == 2
+        labels_a = get_labels_by_transaction_ids(
+            db_conn, [t.transaction_id for t in txns_a]
+        )
+        labels_b = get_labels_by_transaction_ids(
+            db_conn, [t.transaction_id for t in txns_b]
+        )
+        assert len(labels_a) == 2
+        assert labels_b == {}
+
+    def test_prefer_statement_when_dual_scope(
+        self, db_conn: psycopg.Connection
+    ) -> None:
+        cats = {c.slug: c for c in list_spend_categories(db_conn)}
+        insert_spend_label_rule(
+            db_conn,
+            payee_pattern="SYNTHETIC PG&E",
+            spend_category_id=cats["utilities"].spend_category_id,
+        )
+        db_conn.commit()
+        stmt_a, txns_a = _seed_statement(
+            db_conn,
+            basename="dual_a.pdf",
+            content_sha="c" * 64,
+            rows=[("SYNTHETIC PG&E", "SYNTHETIC PG&E", -1000)],
+            start=datetime.date(2026, 10, 1),
+            end=datetime.date(2026, 10, 31),
+        )
+        _seed_statement(
+            db_conn,
+            basename="dual_b.pdf",
+            content_sha="d" * 64,
+            rows=[("SYNTHETIC PG&E", "SYNTHETIC PG&E OTHER", -2000)],
+            start=datetime.date(2026, 10, 1),
+            end=datetime.date(2026, 10, 31),
+        )
+        batch = run_suggest(
+            db_conn,
+            year=2026,
+            month=10,
+            statement_id=stmt_a,
+            vault_client=_DownVault(),
+        )
+        db_conn.commit()
+        assert batch.statement_id == stmt_a
+        assert batch.suggestable_count == 1
+        assert batch.rule_groups[0].txn_count == 1
+        assert UUID(batch.rule_groups[0].transaction_ids[0]) == txns_a[0].transaction_id
+
+    def test_neither_scope_fails_loud(self, db_conn: psycopg.Connection) -> None:
+        with pytest.raises(TokenError, match="SUGGEST_SCOPE_REQUIRED"):
+            run_suggest(db_conn, vault_client=_DownVault())
+
+    def test_month_mode_unaffected_and_no_cross_clear(
+        self, db_conn: psycopg.Connection
+    ) -> None:
+        cats = {c.slug: c for c in list_spend_categories(db_conn)}
+        insert_spend_label_rule(
+            db_conn,
+            payee_pattern="SYNTHETIC PG&E",
+            spend_category_id=cats["utilities"].spend_category_id,
+        )
+        db_conn.commit()
+        stmt_a, _txns_a = _seed_statement(
+            db_conn,
+            basename="clear_a.pdf",
+            content_sha="e" * 64,
+            rows=[("SYNTHETIC PG&E", "SYNTHETIC PG&E", -1500)],
+            start=datetime.date(2026, 10, 1),
+            end=datetime.date(2026, 10, 31),
+        )
+        stmt_batch = run_suggest(
+            db_conn, statement_id=stmt_a, vault_client=_DownVault()
+        )
+        db_conn.commit()
+        month_batch = run_suggest(
+            db_conn, year=2026, month=10, vault_client=_DownVault()
+        )
+        db_conn.commit()
+        # Month re-run must not wipe statement-scoped staging rows.
+        remaining = db_conn.execute(
+            """
+            SELECT COUNT(*) FROM spend_label_suggestions
+            WHERE batch_id = %s
+            """,
+            (str(stmt_batch.batch_id),),
+        ).fetchone()
+        assert remaining is not None and int(remaining[0]) >= 1
+        assert month_batch.statement_id is None
+        assert month_batch.suggestable_count >= 1
+
+
+class TestStatementSuggestHTMX:
+    def test_statement_ledger_shows_statement_cta(
+        self,
+        client: TestClient,
+        db_conn: psycopg.Connection,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from app.spend import suggest as suggest_mod
+
+        monkeypatch.setattr(suggest_mod, "VaultInferenceClient", lambda: _DownVault())
+        cats = {c.slug: c for c in list_spend_categories(db_conn)}
+        insert_spend_label_rule(
+            db_conn,
+            payee_pattern="SYNTHETIC PG&E",
+            spend_category_id=cats["utilities"].spend_category_id,
+        )
+        db_conn.commit()
+        stmt_id, _txns = _seed_statement(
+            db_conn,
+            basename="htmx_stmt.pdf",
+            content_sha="f" * 64,
+            rows=[
+                ("SYNTHETIC PG&E", "SYNTHETIC PG&E", -38412),
+                (None, "Electronic Withdrawal", -120000),
+            ],
+            start=datetime.date(2026, 10, 1),
+            end=datetime.date(2026, 10, 31),
+        )
+        page = client.get(
+            f"/api/v1/dashboard/statements/{stmt_id}",
+            headers=HX,
+        )
+        assert page.status_code == 200
+        assert "Suggest for this statement" in page.text
+        assert 'name="pie_year"' not in page.text or "statement_id" in page.text
+
+        resp = client.post(
+            "/api/v1/dashboard/ledger/suggest/run",
+            data={"statement_id": str(stmt_id), "pie_year": "2026", "pie_month": "10"},
+            headers=HX,
+        )
+        assert resp.status_code == 200
+        assert (
+            "Suggest for this statement" in resp.text or "This statement" in resp.text
+        )
+        assert "Opaque" in resp.text
+        assert "SYNTHETIC PG&amp;E" in resp.text or "SYNTHETIC PG&E" in resp.text
