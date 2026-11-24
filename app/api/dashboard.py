@@ -67,6 +67,12 @@ from app.presentation.liquidity import (
 )
 from app.presentation.money_format import format_usd_cents
 from app.presentation.usd_parse import parse_usd_form_to_cents
+from app.spend.categories import (
+    clear_manual_label,
+    get_labels_by_transaction_ids,
+    list_spend_categories,
+    set_manual_label,
+)
 
 logger = logging.getLogger("app.api.dashboard")
 
@@ -365,13 +371,26 @@ def _ledger_blocks_for_run(run_id: UUID) -> list[dict[str, Any]]:
     """Build templated ledger dicts for every statement on a run."""
     blocks: list[dict[str, Any]] = []
     with get_db_connection() as conn:
+        categories = list_spend_categories(conn)
         for account, statement, _txn_count in get_run_statements(conn, run_id):
             loaded = get_canonical_statement(conn, statement.statement_id)
             if loaded is None:
                 continue
             _stmt, _summary, transactions = loaded
             holdings = get_statement_holdings(conn, statement.statement_id)
-            blocks.append(_ledger_block(account, statement, transactions, holdings))
+            labels = get_labels_by_transaction_ids(
+                conn, [txn.transaction_id for txn in transactions]
+            )
+            blocks.append(
+                _ledger_block(
+                    account,
+                    statement,
+                    transactions,
+                    holdings,
+                    spend_labels=labels,
+                    spend_categories=categories,
+                )
+            )
     return blocks
 
 
@@ -380,9 +399,13 @@ def _ledger_block(
     statement: Any,
     transactions: Any,
     holdings: Any,
+    *,
+    spend_labels: dict[Any, Any] | None = None,
+    spend_categories: list[Any] | None = None,
 ) -> dict[str, Any]:
     """Build one ledger card dict, including liquid vs non-liquid label."""
     liq = liquidity_class_for_domain(account.account_domain)
+    labels = spend_labels or {}
     return {
         "institution": account.institution,
         "account_type": account.account_type.value,
@@ -390,17 +413,34 @@ def _ledger_block(
         "liquidity_class": liq,
         "liquidity_label": liquidity_label(liq),
         "account_mask": account.account_mask,
+        "statement_id": str(statement.statement_id),
         "start_date": statement.statement_start_date.isoformat(),
         "end_date": statement.statement_end_date.isoformat(),
         "opening_balance_cents": statement.opening_balance_cents,
         "closing_balance_cents": statement.closing_balance_cents,
         "net_change_cents": statement.net_change_cents,
+        "spend_categories": [
+            {"slug": cat.slug, "display_name": cat.display_name}
+            for cat in (spend_categories or [])
+        ],
         "transactions": [
             {
+                "transaction_id": str(txn.transaction_id),
                 "post_date": txn.post_date.isoformat(),
                 "category": txn.transaction_category.value,
                 "description": txn.description,
+                "payee": txn.payee,
                 "amount_cents": txn.amount_cents,
+                "spend_category_slug": (
+                    labels[txn.transaction_id].slug
+                    if txn.transaction_id in labels
+                    else ""
+                ),
+                "spend_category_display": (
+                    labels[txn.transaction_id].display_name
+                    if txn.transaction_id in labels
+                    else "Uncategorized"
+                ),
             }
             for txn in transactions
         ],
@@ -420,6 +460,7 @@ def _ledger_blocks_recent(*, limit: int = 5) -> list[dict[str, Any]]:
     """Build templated ledger dicts for the newest statements."""
     blocks: list[dict[str, Any]] = []
     with get_db_connection() as conn:
+        categories = list_spend_categories(conn)
         recent = list_recent_statements(conn, limit=limit)
         for account, statement, _txn_count in recent:
             loaded = get_canonical_statement(conn, statement.statement_id)
@@ -427,7 +468,19 @@ def _ledger_blocks_recent(*, limit: int = 5) -> list[dict[str, Any]]:
                 continue
             _stmt, _summary, transactions = loaded
             holdings = get_statement_holdings(conn, statement.statement_id)
-            blocks.append(_ledger_block(account, statement, transactions, holdings))
+            labels = get_labels_by_transaction_ids(
+                conn, [txn.transaction_id for txn in transactions]
+            )
+            blocks.append(
+                _ledger_block(
+                    account,
+                    statement,
+                    transactions,
+                    holdings,
+                    spend_labels=labels,
+                    spend_categories=categories,
+                )
+            )
     return blocks
 
 
@@ -762,7 +815,18 @@ async def get_statement_ledger(
                     status_code=status.HTTP_400_BAD_REQUEST,
                 )
             holdings = get_statement_holdings(conn, statement_id)
-            block = _ledger_block(account, statement, transactions, holdings)
+            categories = list_spend_categories(conn)
+            labels = get_labels_by_transaction_ids(
+                conn, [txn.transaction_id for txn in transactions]
+            )
+            block = _ledger_block(
+                account,
+                statement,
+                transactions,
+                holdings,
+                spend_labels=labels,
+                spend_categories=categories,
+            )
     except Exception as exc:  # noqa: BLE001
         logger.error(
             "Dashboard statement drill-in failed",
@@ -772,6 +836,121 @@ async def get_statement_ledger(
             content=env.get_template("upload_error.html").render(
                 error_code="LEDGER_QUERY_FAILED",
                 detail="Could not load statement ledger from the Vault database.",
+            ),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if origin == "history":
+        back_href = "/api/v1/dashboard/statements/history"
+        back_label = "Back to statement history"
+    elif origin == "statements":
+        back_href = "/api/v1/dashboard/statements"
+        back_label = "Back to statements"
+    else:
+        back_href = "/api/v1/dashboard/overview"
+        back_label = "Back to overview"
+
+    return HTMLResponse(
+        content=_render_ledger_html(
+            ledgers=[block],
+            back_href=back_href,
+            back_label=back_label,
+        )
+    )
+
+
+@dashboard_api.post(
+    "/ledger/label",
+    response_class=HTMLResponse,
+    responses={400: {"description": "Unknown slug/txn, or missing HTMX"}},
+)
+async def post_ledger_spend_label(
+    request: Request,
+    transaction_id: Annotated[str, Form()],
+    statement_id: Annotated[str, Form()],
+    spend_category_slug: Annotated[str, Form()] = "",
+) -> HTMLResponse:
+    """Assign or clear a manual spend category on one ledger transaction."""
+    hx_request = request.headers.get("HX-Request", "").lower()
+    if hx_request != "true":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This endpoint requires an HTMX request (HX-Request: true).",
+        )
+
+    origin = (request.query_params.get("from") or "").strip().lower()
+    try:
+        txn_uuid = UUID(transaction_id.strip())
+        stmt_uuid = UUID(statement_id.strip())
+    except ValueError:
+        return HTMLResponse(
+            content=env.get_template("upload_error.html").render(
+                error_code="INVALID_LABEL_IDS",
+                detail="transaction_id and statement_id must be UUIDs.",
+            ),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    slug = spend_category_slug.strip()
+    try:
+        with get_db_connection() as conn:
+            if slug:
+                set_manual_label(conn, transaction_id=txn_uuid, slug=slug)
+            else:
+                clear_manual_label(conn, transaction_id=txn_uuid)
+            loaded = get_canonical_statement(conn, stmt_uuid)
+            if loaded is None:
+                return HTMLResponse(
+                    content=env.get_template("upload_error.html").render(
+                        error_code="STATEMENT_NOT_FOUND",
+                        detail="No statement exists for the requested id.",
+                    ),
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                )
+            statement, _summary, transactions = loaded
+            account = None
+            for acc, stmt, _count in get_run_statements(conn, statement.run_id):
+                if stmt.statement_id == stmt_uuid:
+                    account = acc
+                    break
+            if account is None:
+                return HTMLResponse(
+                    content=env.get_template("upload_error.html").render(
+                        error_code="STATEMENT_NOT_FOUND",
+                        detail="Statement account header could not be resolved.",
+                    ),
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                )
+            holdings = get_statement_holdings(conn, stmt_uuid)
+            categories = list_spend_categories(conn)
+            labels = get_labels_by_transaction_ids(
+                conn, [txn.transaction_id for txn in transactions]
+            )
+            block = _ledger_block(
+                account,
+                statement,
+                transactions,
+                holdings,
+                spend_labels=labels,
+                spend_categories=categories,
+            )
+    except TokenError as exc:
+        code = "SPEND_LABEL_REJECTED"
+        text = str(exc)
+        if "SPEND_CATEGORY_UNKNOWN" in text:
+            code = "SPEND_CATEGORY_UNKNOWN"
+        elif "TRANSACTION_NOT_FOUND" in text:
+            code = "TRANSACTION_NOT_FOUND"
+        elif "SPEND_CATEGORY_SLUG_REQUIRED" in text:
+            code = "SPEND_CATEGORY_SLUG_REQUIRED"
+        logger.warning(
+            "Spend label rejected",
+            extra={"error_code": code, "error_type": type(exc).__name__},
+        )
+        return HTMLResponse(
+            content=env.get_template("upload_error.html").render(
+                error_code=code,
+                detail=text,
             ),
             status_code=status.HTTP_400_BAD_REQUEST,
         )
