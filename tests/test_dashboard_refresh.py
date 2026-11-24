@@ -349,11 +349,16 @@ class TestStatementsView:
         assert "never leave the Vault" in html
         assert "No statements yet" in html
         assert "style=" not in html
+        assert 'id="upload-progress"' in html
+        assert 'hx-indicator="#upload-progress"' in html
+        assert 'role="progressbar"' in html
         # Shell must update the dropzone label when a file is chosen (hidden input).
         shell = client.get("/dashboard").text
         assert 'id="statement-file"' in shell or "statement-file" in shell
         assert "upload-prompt" in shell
         assert "files[0]" in shell or "files &&" in shell or ".files" in shell
+        assert "upload-item" in shell
+        assert "upload-summary" in shell
 
     def test_lists_recent_statements(self, client: TestClient, tmp_path: Path) -> None:
         _upload(client, tmp_path, "chase_checking_happy")

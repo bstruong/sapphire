@@ -9,7 +9,7 @@
           hx-encoding="multipart/form-data"
           hx-swap="innerHTML"
           hx-target="#pane-vault-body"
-          hx-indicator="#pane-vault-body">
+          hx-indicator="#upload-progress">
         <h2>Statement upload</h2>
         <p class="muted">Upload supported statement PDFs (Chase credit card, Charles Schwab Bank checking, Schwab or Vanguard brokerage, Standard Bank/Card fixtures). Every file is validated before it is saved. Failures are per-file — one bad PDF does not block the others.</p>
         <label class="dropzone" id="upload-dropzone" for="statement-file">
@@ -20,6 +20,18 @@
                    accept="application/pdf,.pdf" multiple required>
         </label>
         <span class="lock-note"><svg class="icon"><use href="#i-lock"/></svg>Parsed locally &mdash; raw statements never leave the Vault</span>
+        <div id="upload-progress" class="upload-progress htmx-indicator" aria-live="polite">
+            <div class="upload-progress-label" id="upload-progress-label">Uploading&hellip;</div>
+            <div class="upload-progress-track"
+                 id="upload-progress-bar"
+                 role="progressbar"
+                 aria-valuemin="0"
+                 aria-valuemax="100"
+                 aria-valuenow="0"
+                 aria-labelledby="upload-progress-label">
+                <div class="upload-progress-fill" id="upload-progress-fill"></div>
+            </div>
+        </div>
         <div>
             <button type="submit" id="upload-btn" class="btn btn-primary"><svg class="icon"><use href="#i-upload"/></svg>Upload to Vault</button>
         </div>

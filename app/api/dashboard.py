@@ -20,7 +20,7 @@ from typing import Annotated, Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, status
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from app.budget.envelopes import (
@@ -752,6 +752,83 @@ async def upload_statement_html(
     return HTMLResponse(content=_render_batch_result_html(results))
 
 
+def _batch_item_to_dict(item: BatchItemResult) -> dict[str, Any]:
+    """Serialize a batch item for progress JSON (no monetary fields)."""
+    return {
+        "filename": item.filename,
+        "ok": item.ok,
+        "statement_id": str(item.statement_id) if item.statement_id else None,
+        "run_id": str(item.run_id) if item.run_id else None,
+        "error_code": item.error_code,
+        "detail": item.detail,
+        "adapter_id": item.adapter_id,
+    }
+
+
+def _parse_batch_item_dict(raw: Any) -> BatchItemResult:
+    """Fail loudly when a progress-summary row is missing required keys."""
+    if not isinstance(raw, dict):
+        raise TypeError("Each result must be an object")
+    required = (
+        "filename",
+        "ok",
+        "statement_id",
+        "run_id",
+        "error_code",
+        "detail",
+        "adapter_id",
+    )
+    missing = [key for key in required if key not in raw]
+    if missing:
+        raise ValueError(f"Missing keys: {', '.join(missing)}")
+    if not isinstance(raw["filename"], str) or not raw["filename"]:
+        raise ValueError("filename must be a non-empty string")
+    if not isinstance(raw["ok"], bool):
+        raise TypeError("ok must be a boolean")
+
+    statement_id: UUID | None = None
+    run_id: UUID | None = None
+    if raw["statement_id"] is not None:
+        statement_id = UUID(str(raw["statement_id"]))
+    if raw["run_id"] is not None:
+        run_id = UUID(str(raw["run_id"]))
+
+    error_code = raw["error_code"]
+    detail = raw["detail"]
+    adapter_id = raw["adapter_id"]
+    if error_code is not None and not isinstance(error_code, str):
+        raise ValueError("error_code must be a string or null")
+    if detail is not None and not isinstance(detail, str):
+        raise ValueError("detail must be a string or null")
+    if adapter_id is not None and not isinstance(adapter_id, str):
+        raise ValueError("adapter_id must be a string or null")
+
+    return BatchItemResult(
+        filename=Path(raw["filename"]).name,
+        ok=raw["ok"],
+        statement_id=statement_id,
+        run_id=run_id,
+        error_code=error_code,
+        detail=detail,
+        adapter_id=adapter_id,
+    )
+
+
+async def _ingest_upload_to_batch_item(upload: UploadFile) -> BatchItemResult:
+    """Ingest one uploaded PDF into a BatchItemResult (progress / bulk path)."""
+    safe_basename = Path(upload.filename or "upload.pdf").name
+    content = await upload.read()
+    suffix = ".pdf" if safe_basename.lower().endswith(".pdf") else ".bin"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+        tmp.write(content)
+    try:
+        return ingest_pdf_batch([(tmp_path, safe_basename)])[0]
+    finally:
+        if tmp_path.exists():
+            tmp_path.unlink()
+
+
 async def _upload_single_statement_html(upload: UploadFile) -> HTMLResponse:
     """Legacy one-file dashboard ingest → ledger or error fragment."""
     if not upload.filename or not upload.filename.lower().endswith(".pdf"):
@@ -800,6 +877,121 @@ async def _upload_single_statement_html(upload: UploadFile) -> HTMLResponse:
             adapter_id=result.adapter_id,
         )
     )
+
+
+@dashboard_api.post(
+    "/upload-item",
+    responses={
+        400: {"description": "Invalid upload, multi-file payload, or missing HTMX"},
+    },
+)
+async def upload_statement_item_json(
+    request: Request,
+    files: Annotated[list[UploadFile] | None, File()] = None,
+    file: Annotated[UploadFile | None, File()] = None,
+) -> JSONResponse:
+    """Ingest exactly one PDF and return a JSON batch item for progress UX.
+
+    Used by the dashboard sequential bulk loop (N of M). Failures are explicit
+    in the JSON body with taxonomy codes — never silently skipped.
+    """
+    hx_request = request.headers.get("HX-Request", "").lower()
+    if hx_request != "true":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This endpoint requires an HTMX request (HX-Request: true).",
+        )
+
+    uploads = await _collect_upload_files(files, file)
+    if not uploads:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={
+                "ok": False,
+                "error_code": "MISSING_FILE",
+                "detail": "Choose a PDF statement to upload.",
+                "filename": "",
+                "statement_id": None,
+                "run_id": None,
+                "adapter_id": None,
+            },
+        )
+    if len(uploads) > 1:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={
+                "ok": False,
+                "error_code": "TOO_MANY_FILES",
+                "detail": "upload-item accepts exactly one file per request.",
+                "filename": Path(uploads[0].filename or "upload.pdf").name,
+                "statement_id": None,
+                "run_id": None,
+                "adapter_id": None,
+            },
+        )
+
+    item = await _ingest_upload_to_batch_item(uploads[0])
+    logger.info(
+        "Dashboard upload-item completed",
+        extra={
+            "original_basename": item.filename,
+            "ok": item.ok,
+            "error_code": item.error_code,
+        },
+    )
+    return JSONResponse(content=_batch_item_to_dict(item))
+
+
+@dashboard_api.post(
+    "/upload-summary",
+    response_class=HTMLResponse,
+    responses={
+        400: {"description": "Malformed summary payload or missing HTMX"},
+    },
+)
+async def upload_summary_html(request: Request) -> HTMLResponse:
+    """Render the bulk upload result table from client-collected item JSON."""
+    hx_request = request.headers.get("HX-Request", "").lower()
+    if hx_request != "true":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This endpoint requires an HTMX request (HX-Request: true).",
+        )
+
+    try:
+        payload = await request.json()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Upload summary payload must be valid JSON.",
+        ) from exc
+
+    if not isinstance(payload, dict) or "results" not in payload:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Upload summary requires a results array.",
+        )
+    raw_results = payload["results"]
+    if not isinstance(raw_results, list) or not raw_results:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Upload summary results must be a non-empty array.",
+        )
+    if len(raw_results) > MAX_BATCH_FILES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"At most {MAX_BATCH_FILES} results may be summarized.",
+        )
+
+    try:
+        results = [_parse_batch_item_dict(row) for row in raw_results]
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Malformed upload summary row: {exc}",
+        ) from exc
+
+    return HTMLResponse(content=_render_batch_result_html(results))
 
 
 @dashboard_api.get(
