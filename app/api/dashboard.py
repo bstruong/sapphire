@@ -76,6 +76,16 @@ from app.spend.categories import (
     list_spend_categories,
     set_manual_label,
 )
+from app.spend.suggest import (
+    SuggestBatch,
+    accept_all_rule_suggestions,
+    accept_suggestion_group,
+    load_batch,
+    month_scope_counts,
+    reject_all_vault_suggestions,
+    reject_suggestion_group,
+    run_suggest,
+)
 
 logger = logging.getLogger("app.api.dashboard")
 
@@ -619,6 +629,97 @@ def _ledger_blocks_recent(*, limit: int = 5) -> list[dict[str, Any]]:
     return blocks
 
 
+def _default_suggest_year_month(
+    ledgers: list[dict[str, Any]],
+) -> tuple[int, int]:
+    """Prefer the newest ledger end month; fall back to a fixed dogfood month."""
+    end_dates: list[str] = []
+    for block in ledgers:
+        end = block.get("end_date")
+        if isinstance(end, str) and len(end) >= 7:
+            end_dates.append(end)
+    if end_dates:
+        latest = max(end_dates)
+        return int(latest[0:4]), int(latest[5:7])
+    return 2026, 10
+
+
+def _suggest_context_idle(
+    *,
+    year: int,
+    month: int,
+    categories: list[Any] | None = None,
+) -> dict[str, Any]:
+    with get_db_connection() as conn:
+        cats = categories if categories is not None else list_spend_categories(conn)
+        unlabeled, opaque, suggestable = month_scope_counts(
+            conn, year=year, month=month
+        )
+    return {
+        "has_run": False,
+        "batch_id": "",
+        "pie_year": year,
+        "pie_month": month,
+        "unlabeled_count": unlabeled,
+        "opaque_count": opaque,
+        "suggestable_count": suggestable,
+        "vault_available": False,
+        "vault_skipped_reason": None,
+        "rule_groups": [],
+        "vault_groups": [],
+        "categories": [{"slug": c.slug, "display_name": c.display_name} for c in cats],
+    }
+
+
+def _suggest_context_from_batch(
+    batch: SuggestBatch, *, categories: list[Any]
+) -> dict[str, Any]:
+    return {
+        "has_run": True,
+        "batch_id": str(batch.batch_id),
+        "pie_year": batch.pie_year,
+        "pie_month": batch.pie_month,
+        "unlabeled_count": batch.unlabeled_count,
+        "opaque_count": batch.opaque_count,
+        "suggestable_count": batch.suggestable_count,
+        "vault_available": batch.vault_available,
+        "vault_skipped_reason": batch.vault_skipped_reason,
+        "rule_groups": [
+            {
+                "group_key": g.group_key,
+                "payee_display": g.payee_display,
+                "proposed_slug": g.proposed_slug,
+                "display_name": g.display_name,
+                "origin": g.origin,
+                "evidence": g.evidence,
+                "txn_count": g.txn_count,
+                "abs_cents_total": g.abs_cents_total,
+            }
+            for g in batch.rule_groups
+        ],
+        "vault_groups": [
+            {
+                "group_key": g.group_key,
+                "payee_display": g.payee_display,
+                "proposed_slug": g.proposed_slug,
+                "display_name": g.display_name,
+                "origin": g.origin,
+                "evidence": g.evidence,
+                "txn_count": g.txn_count,
+                "abs_cents_total": g.abs_cents_total,
+            }
+            for g in batch.vault_groups
+        ],
+        "categories": [
+            {"slug": c.slug, "display_name": c.display_name} for c in categories
+        ],
+    }
+
+
+def _render_suggest_panel(suggest: dict[str, Any]) -> str:
+    return env.get_template("ledger_suggest_panel.html").render(suggest=suggest)
+
+
 def _render_ledger_html(
     *,
     ledgers: list[dict[str, Any]],
@@ -626,16 +727,40 @@ def _render_ledger_html(
     adapter_id: str | None = None,
     back_href: str = "/api/v1/dashboard/overview",
     back_label: str = "Back to overview",
+    suggest: dict[str, Any] | None = None,
 ) -> str:
     if not ledgers:
         return env.get_template("ledger_empty.html").render()
+    year, month = _default_suggest_year_month(ledgers)
+    suggest_ctx = suggest or _suggest_context_idle(year=year, month=month)
     return env.get_template("ledger_result.html").render(
         ledgers=ledgers,
         run_id=str(run_id) if run_id else None,
         adapter_id=adapter_id or "",
         back_href=back_href,
         back_label=back_label,
+        suggest=suggest_ctx,
     )
+
+
+def _parse_pie_form_year_month(pie_year: str, pie_month: str) -> tuple[int, int]:
+    try:
+        year = int(str(pie_year).strip())
+        month = int(str(pie_month).strip())
+    except (TypeError, ValueError) as exc:
+        raise TokenError("PIE_MONTH_INVALID: pie_year/pie_month must be ints") from exc
+    if year < 1970 or year > 2100 or month < 1 or month > 12:
+        raise TokenError("PIE_MONTH_INVALID: out of range")
+    return year, month
+
+
+def _require_htmx(request: Request) -> None:
+    hx_request = request.headers.get("HX-Request", "").lower()
+    if hx_request != "true":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This endpoint requires an HTMX request (HX-Request: true).",
+        )
 
 
 @router.get("/dashboard", response_class=HTMLResponse)
@@ -1111,6 +1236,212 @@ async def post_ledger_spend_label(
             back_label=back_label,
         )
     )
+
+
+def _suggest_error_response(exc: TokenError) -> HTMLResponse:
+    text = str(exc)
+    code = "SUGGEST_REJECTED"
+    if "PIE_MONTH_INVALID" in text:
+        code = "PIE_MONTH_INVALID"
+    elif "SPEND_CATEGORY_UNKNOWN" in text:
+        code = "SPEND_CATEGORY_UNKNOWN"
+    elif "OPAQUE_PAYEE_INELIGIBLE" in text:
+        code = "OPAQUE_PAYEE_INELIGIBLE"
+    elif "SUGGEST_BATCH_NOT_FOUND" in text:
+        code = "SUGGEST_BATCH_NOT_FOUND"
+    elif "SUGGEST_GROUP_NOT_FOUND" in text:
+        code = "SUGGEST_GROUP_NOT_FOUND"
+    logger.warning(
+        "Spend suggest action rejected",
+        extra={"error_code": code, "error_type": type(exc).__name__},
+    )
+    return HTMLResponse(
+        content=env.get_template("upload_error.html").render(
+            error_code=code,
+            detail=text,
+        ),
+        status_code=status.HTTP_400_BAD_REQUEST,
+    )
+
+
+@dashboard_api.post(
+    "/ledger/suggest/run",
+    response_class=HTMLResponse,
+    responses={400: {"description": "Invalid month or missing HTMX"}},
+)
+async def post_ledger_suggest_run(
+    request: Request,
+    pie_year: Annotated[str, Form()] = "",
+    pie_month: Annotated[str, Form()] = "",
+) -> HTMLResponse:
+    """Stage rule (+ optional Vault) suggestions for a calendar month."""
+    _require_htmx(request)
+    try:
+        year, month = _parse_pie_form_year_month(pie_year, pie_month)
+        with get_db_connection() as conn:
+            batch = run_suggest(conn, year=year, month=month)
+            categories = list_spend_categories(conn)
+            ctx = _suggest_context_from_batch(batch, categories=categories)
+    except TokenError as exc:
+        return _suggest_error_response(exc)
+    return HTMLResponse(content=_render_suggest_panel(ctx))
+
+
+@dashboard_api.post(
+    "/ledger/suggest/accept",
+    response_class=HTMLResponse,
+    responses={400: {"description": "Invalid accept payload or missing HTMX"}},
+)
+async def post_ledger_suggest_accept(
+    request: Request,
+    batch_id: Annotated[str, Form()] = "",
+    group_key: Annotated[str, Form()] = "",
+    slug: Annotated[str, Form()] = "",
+    pie_year: Annotated[str, Form()] = "",
+    pie_month: Annotated[str, Form()] = "",
+    vault_available: Annotated[str, Form()] = "0",
+) -> HTMLResponse:
+    """Accept one suggestion group; rewrite panel from remaining staging."""
+    _require_htmx(request)
+    try:
+        year, month = _parse_pie_form_year_month(pie_year, pie_month)
+        bid = UUID(batch_id.strip())
+        with get_db_connection() as conn:
+            accept_suggestion_group(
+                conn, batch_id=bid, group_key=group_key.strip(), slug=slug
+            )
+            categories = list_spend_categories(conn)
+            batch = load_batch(
+                conn,
+                batch_id=bid,
+                year=year,
+                month=month,
+                vault_available=vault_available.strip() == "1",
+                vault_skipped_reason=(
+                    None if vault_available.strip() == "1" else "jarvis_unavailable"
+                ),
+            )
+            ctx = _suggest_context_from_batch(batch, categories=categories)
+    except (TokenError, ValueError) as exc:
+        if isinstance(exc, ValueError):
+            return _suggest_error_response(TokenError(f"Invalid batch_id: {exc}"))
+        return _suggest_error_response(exc)
+    return HTMLResponse(content=_render_suggest_panel(ctx))
+
+
+@dashboard_api.post(
+    "/ledger/suggest/reject",
+    response_class=HTMLResponse,
+    responses={400: {"description": "Invalid reject payload or missing HTMX"}},
+)
+async def post_ledger_suggest_reject(
+    request: Request,
+    batch_id: Annotated[str, Form()] = "",
+    group_key: Annotated[str, Form()] = "",
+    pie_year: Annotated[str, Form()] = "",
+    pie_month: Annotated[str, Form()] = "",
+    vault_available: Annotated[str, Form()] = "0",
+) -> HTMLResponse:
+    """Reject one suggestion group (staging only)."""
+    _require_htmx(request)
+    try:
+        year, month = _parse_pie_form_year_month(pie_year, pie_month)
+        bid = UUID(batch_id.strip())
+        with get_db_connection() as conn:
+            reject_suggestion_group(conn, batch_id=bid, group_key=group_key.strip())
+            categories = list_spend_categories(conn)
+            batch = load_batch(
+                conn,
+                batch_id=bid,
+                year=year,
+                month=month,
+                vault_available=vault_available.strip() == "1",
+                vault_skipped_reason=(
+                    None if vault_available.strip() == "1" else "jarvis_unavailable"
+                ),
+            )
+            ctx = _suggest_context_from_batch(batch, categories=categories)
+    except (TokenError, ValueError) as exc:
+        if isinstance(exc, ValueError):
+            return _suggest_error_response(TokenError(f"Invalid batch_id: {exc}"))
+        return _suggest_error_response(exc)
+    return HTMLResponse(content=_render_suggest_panel(ctx))
+
+
+@dashboard_api.post(
+    "/ledger/suggest/accept-all-rules",
+    response_class=HTMLResponse,
+    responses={400: {"description": "Invalid batch or missing HTMX"}},
+)
+async def post_ledger_suggest_accept_all_rules(
+    request: Request,
+    batch_id: Annotated[str, Form()] = "",
+    pie_year: Annotated[str, Form()] = "",
+    pie_month: Annotated[str, Form()] = "",
+    vault_available: Annotated[str, Form()] = "0",
+) -> HTMLResponse:
+    """Accept every staged rule group. Never bulk-accepts Vault."""
+    _require_htmx(request)
+    try:
+        year, month = _parse_pie_form_year_month(pie_year, pie_month)
+        bid = UUID(batch_id.strip())
+        with get_db_connection() as conn:
+            accept_all_rule_suggestions(conn, batch_id=bid)
+            categories = list_spend_categories(conn)
+            batch = load_batch(
+                conn,
+                batch_id=bid,
+                year=year,
+                month=month,
+                vault_available=vault_available.strip() == "1",
+                vault_skipped_reason=(
+                    None if vault_available.strip() == "1" else "jarvis_unavailable"
+                ),
+            )
+            ctx = _suggest_context_from_batch(batch, categories=categories)
+    except (TokenError, ValueError) as exc:
+        if isinstance(exc, ValueError):
+            return _suggest_error_response(TokenError(f"Invalid batch_id: {exc}"))
+        return _suggest_error_response(exc)
+    return HTMLResponse(content=_render_suggest_panel(ctx))
+
+
+@dashboard_api.post(
+    "/ledger/suggest/reject-all-vault",
+    response_class=HTMLResponse,
+    responses={400: {"description": "Invalid batch or missing HTMX"}},
+)
+async def post_ledger_suggest_reject_all_vault(
+    request: Request,
+    batch_id: Annotated[str, Form()] = "",
+    pie_year: Annotated[str, Form()] = "",
+    pie_month: Annotated[str, Form()] = "",
+    vault_available: Annotated[str, Form()] = "0",
+) -> HTMLResponse:
+    """Drop all Vault-staged suggestions for the batch."""
+    _require_htmx(request)
+    try:
+        year, month = _parse_pie_form_year_month(pie_year, pie_month)
+        bid = UUID(batch_id.strip())
+        with get_db_connection() as conn:
+            reject_all_vault_suggestions(conn, batch_id=bid)
+            categories = list_spend_categories(conn)
+            batch = load_batch(
+                conn,
+                batch_id=bid,
+                year=year,
+                month=month,
+                vault_available=vault_available.strip() == "1",
+                vault_skipped_reason=(
+                    None if vault_available.strip() == "1" else "jarvis_unavailable"
+                ),
+            )
+            ctx = _suggest_context_from_batch(batch, categories=categories)
+    except (TokenError, ValueError) as exc:
+        if isinstance(exc, ValueError):
+            return _suggest_error_response(TokenError(f"Invalid batch_id: {exc}"))
+        return _suggest_error_response(exc)
+    return HTMLResponse(content=_render_suggest_panel(ctx))
 
 
 @dashboard_api.post(
