@@ -222,7 +222,8 @@ def _session_schema(postgres_url: str) -> None:
 
 
 _TRUNCATE_LEDGER_SQL = """
-TRUNCATE TABLE spend_label_rules, transaction_spend_labels, envelopes, raw_tokens, raw_pages,
+TRUNCATE TABLE spend_label_suggestions, spend_label_rules,
+                           transaction_spend_labels, envelopes, raw_tokens, raw_pages,
                transactions, holdings,
                statement_depository_summaries, statement_credit_summaries,
                statement_brokerage_summaries, statements, accounts,

@@ -12,9 +12,11 @@
             {% else %}
             <span class="chip chip-accent">latest statements</span>
             {% endif %}
-            Templated ledger from Postgres (stored as integer cents, shown as USD).
+            Suggest labels for unlabeled spend — Accept / Reject a handful of payee groups.
         </p>
     </header>
+
+    {% include "ledger_suggest_panel.html" %}
 
     {% for block in ledgers %}
     <div class="card">
@@ -45,7 +47,7 @@
                 </thead>
                 <tbody>
                     {% for txn in block.transactions %}
-                    <tr>
+                    <tr{% if not txn.payee and txn.amount_cents < 0 %} class="opaque-row" id="opaque-ledger-rows"{% endif %}>
                         <td class="muted num">{{ txn.post_date }}</td>
                         <td><span class="chip chip-neutral">{{ txn.category | human_label }}</span></td>
                         <td>{{ txn.description }}</td>

@@ -32,7 +32,8 @@ def _truncate(url: str) -> None:
     with psycopg.connect(url) as conn:
         conn.execute(
             """
-            TRUNCATE TABLE spend_label_rules, transaction_spend_labels, envelopes, raw_tokens, raw_pages,
+            TRUNCATE TABLE spend_label_suggestions, spend_label_rules,
+                           transaction_spend_labels, envelopes, raw_tokens, raw_pages,
                            transactions, holdings,
                            statement_depository_summaries, statement_credit_summaries,
                            statement_brokerage_summaries, statements, accounts,

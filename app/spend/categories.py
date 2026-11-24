@@ -108,15 +108,18 @@ def _require_transaction(conn: psycopg.Connection, transaction_id: UUID) -> None
         )
 
 
-def set_manual_label(
+def set_spend_label(
     conn: psycopg.Connection,
     *,
     transaction_id: UUID,
     slug: str,
+    source: LabelSource,
 ) -> TransactionSpendLabel:
-    """Upsert a manual spend label. Fail loud on unknown slug / missing txn."""
+    """Upsert a spend label with an explicit source. Fail loud on bad inputs."""
     if not isinstance(transaction_id, UUID):
         raise TokenError("transaction_id must be a UUID")
+    if source not in ("manual", "rule", "vault_suggest_accepted"):
+        raise TokenError(f"Invalid spend label source {source!r}")
     _require_transaction(conn, transaction_id)
     category = _require_category_by_slug(conn, slug)
     labeled_at = datetime.now(UTC)
@@ -124,20 +127,25 @@ def set_manual_label(
         """
         INSERT INTO transaction_spend_labels (
             transaction_id, spend_category_id, source, labeled_at
-        ) VALUES (%s, %s, 'manual', %s)
+        ) VALUES (%s, %s, %s, %s)
         ON CONFLICT (transaction_id) DO UPDATE
         SET spend_category_id = EXCLUDED.spend_category_id,
-            source = 'manual',
+            source = EXCLUDED.source,
             labeled_at = EXCLUDED.labeled_at
         """,
-        (str(transaction_id), str(category.spend_category_id), labeled_at),
+        (
+            str(transaction_id),
+            str(category.spend_category_id),
+            source,
+            labeled_at,
+        ),
     )
     logger.info(
-        "Manual spend label set",
+        "Spend label set",
         extra={
             "transaction_id": str(transaction_id),
             "spend_category_slug": category.slug,
-            "source": "manual",
+            "source": source,
         },
     )
     return TransactionSpendLabel(
@@ -145,8 +153,20 @@ def set_manual_label(
         spend_category_id=category.spend_category_id,
         slug=category.slug,
         display_name=category.display_name,
-        source="manual",
+        source=source,
         labeled_at=labeled_at,
+    )
+
+
+def set_manual_label(
+    conn: psycopg.Connection,
+    *,
+    transaction_id: UUID,
+    slug: str,
+) -> TransactionSpendLabel:
+    """Upsert a manual spend label. Fail loud on unknown slug / missing txn."""
+    return set_spend_label(
+        conn, transaction_id=transaction_id, slug=slug, source="manual"
     )
 
 
