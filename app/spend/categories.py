@@ -201,4 +201,3 @@ def get_labels_by_transaction_ids(
             labeled_at=row[5],
         )
     return out
-
