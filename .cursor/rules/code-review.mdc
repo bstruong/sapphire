@@ -1,0 +1,67 @@
+---
+description: High-signal code review for Sapphire (Python / FastAPI / HTMX)
+globs:
+  - "*.py"
+  - "*.html"
+  - "*.jinja2"
+  - "pyproject.toml"
+  - "app/static/**/**"
+alwaysApply: false
+---
+
+# Sapphire Code Review
+
+Strict reviewer. Findings only — no summaries, praise, fluff, or restating the diff.
+
+## Output contract
+
+- **Issues:** one line each: `SEVERITY | file:line | checklist item | concrete defect + fix` (`BLOCKER`/`MAJOR`/`MINOR`).
+- **Clean:** exactly `APPROVED`, then 1–2 concise bullets of what was verified. Nothing else.
+
+## 150 LOC gate (hard)
+
+Automated pass / `APPROVED` only for diffs ≤ 150 LOC (insertions + deletions vs `main`).
+
+1. Require `./scripts/check-diff-size.sh` (or `git diff main --shortstat` sum) before approval.
+2. If LOC > 150: do **not** `APPROVED`. State `LOC GATE FAILED: N > 150` and stop; author splits the PR or accepts manual-only review.
+3. If ≤ 150 and no checklist findings: `APPROVED` is allowed.
+
+## Checklists
+
+Review only what the diff touches. Skip irrelevant sections.
+
+### 1. Problem Statement & Intent
+
+- Diff solves the stated PR problem; no drive-by refactors or scope creep.
+- Incomplete TODOs / dead ends that leave the intent unfinished are blockers.
+
+### 2. FastAPI & Async / Performance
+
+- Sync I/O (pdfplumber, disk, blocking drivers) off the event loop via `anyio.to_thread.run_sync`, threadpool, or FastAPI `BackgroundTasks` / workers.
+- Async handlers must not call blocking APIs directly.
+- Pydantic v2: `model_validate` / `model_validate_json`, `@field_validator` / `@model_validator`, explicit `Field(...)` — not v1 `parse_obj` / `@validator`.
+
+### 3. Financial & DB Safety (psycopg 3 + PostgreSQL)
+
+- Money as integer cents (`int` / `BIGINT`) only — no `float` for monetary math or storage.
+- Parameterized SQL (`%s` / named). No f-string / `.format` interpolation of values.
+- Multi-table writes in a context-managed transaction (`with conn.transaction():`); partial commits are blockers.
+- Fail loud (`app.models.exceptions`); no silent coercion or `except Exception: pass`.
+
+### 4. HTMX & Template Security
+
+- User input in Jinja2/HTMX fragments is escaped — no `|safe` / `Markup` on untrusted data.
+- HTMX routes return partial snippets, not full layouts (unless full-document navigation).
+
+### 5. Observability & Ingestion (OTel + pdfplumber)
+
+- Spans / structured logs on critical ops (ingest, parse, persist, external I/O).
+- No PII, tokens, account numbers, SSNs, or unmasked amounts in attributes/logs.
+- `with pdfplumber.open(...)`; malformed PDFs fail loudly — no hang or silent empty success.
+
+### 6. Code Quality & Testing
+
+- Ruff-clean for touched Python; no unjustified ignore abuse.
+- Happy path + loud negative tests; `app/` coverage ≥90% must remain holdable.
+- Financial/validator changes stay mutmut-resilient (assertion-heavy, no coverage theater).
+- Explicit AST-readable code — no dynamic metaprogramming / deep reflection.
