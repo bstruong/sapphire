@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""QA Acceptance: Hiring-bar Quick Wins (P3 / A3 / F2 / F1).
+"""QA Acceptance: Quick Wins (P3 / A3 / F2 / F1).
 
 Verifies README is the single entry point for seed+health, local inference
 contract docs, the 5-minute demo script, and Docker Compose + healthcheck.
 
 Usage:
-    uv run python scripts/qa_hiring_bar_quick_wins.py
+    uv run python scripts/qa_quick_wins.py
 """
 
 from __future__ import annotations
@@ -116,7 +116,7 @@ def check_docker(readme: str) -> None:
 
 def main() -> int:
     print("=" * 65)
-    print("  SAPPHIRE Hiring-bar Quick Wins QA")
+    print("  SAPPHIRE Quick Wins QA")
     print("=" * 65)
     readme_path = ROOT / "README.md"
     if not readme_path.is_file():
@@ -132,7 +132,7 @@ def main() -> int:
         print(f"\n[FAIL] {exc}")
         return 1
     print(f"\n{'=' * 65}")
-    print("All hiring-bar Quick Wins checks passed!")
+    print("All Quick Wins checks passed!")
     return 0
 
 

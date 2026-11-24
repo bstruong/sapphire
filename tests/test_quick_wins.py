@@ -1,4 +1,4 @@
-"""Regression checks for hiring-bar Quick Wins docs/infra surfaces."""
+"""Regression checks for Quick Wins docs/infra surfaces."""
 
 from __future__ import annotations
 
