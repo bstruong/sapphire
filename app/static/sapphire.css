@@ -395,6 +395,23 @@ button { cursor: pointer; }
 .alert p { color: var(--text-2); font-size: 13px; margin-top: 4px; }
 .alert-actions { display: flex; gap: 10px; margin-top: 12px; }
 .status-line { display: flex; align-items: center; gap: 12px; padding: 8px 0; font-size: 12.5px; color: var(--text-2); }
+.upload-batch-result .banner {
+  margin: 0 24px 12px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.upload-batch-result .banner strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 640;
+  letter-spacing: -.01em;
+}
+.upload-batch-result .banner .muted { margin-top: 4px; font-size: 12.5px; }
+.upload-batch-result .status-ok { color: var(--pos); font-weight: 640; }
+.upload-batch-result .status-fail { color: var(--neg); font-weight: 640; }
+.upload-batch-result .alert-actions { padding: 0 24px 20px; }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 1180px) {

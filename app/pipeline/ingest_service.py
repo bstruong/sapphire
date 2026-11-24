@@ -18,6 +18,7 @@ from app.adapters.registry import AdapterRegistryError, get_default_registry
 from app.db.connection import get_db_connection
 from app.db.repository import (
     get_canonical_ingest_by_sha256,
+    get_run_statements,
     persist_canonical_statement,
     persist_raw_extraction,
     persist_raw_payload,
@@ -61,6 +62,120 @@ class IngestFailure:
     run_id: UUID | None = None
     raw_payload_id: UUID | None = None
     adapter_id: str | None = None
+
+
+MAX_BATCH_FILES = 20
+MAX_FILE_BYTES = 25 * 1024 * 1024
+
+
+@dataclass(frozen=True)
+class BatchItemResult:
+    """Per-file outcome for a multi-PDF bulk ingest."""
+
+    filename: str
+    ok: bool
+    run_id: UUID | None = None
+    statement_id: UUID | None = None
+    error_code: str | None = None
+    detail: str | None = None
+    adapter_id: str | None = None
+
+
+def _first_statement_id(run_id: UUID) -> UUID | None:
+    """Return the first statement_id for a persisted run, if any."""
+    with get_db_connection() as conn:
+        rows = get_run_statements(conn, run_id)
+    if not rows:
+        return None
+    return rows[0][1].statement_id
+
+
+def _validate_pdf_item(
+    tmp_path: Path, original_basename: str
+) -> BatchItemResult | None:
+    """Return a failure result when pre-ingest checks fail; None when valid."""
+    safe_name = Path(original_basename).name
+    if not safe_name.lower().endswith(".pdf"):
+        return BatchItemResult(
+            filename=safe_name,
+            ok=False,
+            error_code="INVALID_FILE",
+            detail="Only PDF documents are supported for ingestion.",
+        )
+    try:
+        content = tmp_path.read_bytes()
+    except OSError as exc:
+        return BatchItemResult(
+            filename=safe_name,
+            ok=False,
+            error_code="EXTRACTION_FAILED",
+            detail=str(exc),
+        )
+    if not content:
+        return BatchItemResult(
+            filename=safe_name,
+            ok=False,
+            error_code="EMPTY_FILE",
+            detail="Uploaded file payload is empty.",
+        )
+    if len(content) > MAX_FILE_BYTES:
+        return BatchItemResult(
+            filename=safe_name,
+            ok=False,
+            error_code="FILE_TOO_LARGE",
+            detail=f"File exceeds maximum size of {MAX_FILE_BYTES} bytes.",
+        )
+    if not content.startswith(b"%PDF"):
+        return BatchItemResult(
+            filename=safe_name,
+            ok=False,
+            error_code="INVALID_PDF",
+            detail="Uploaded file is not a valid PDF binary.",
+        )
+    return None
+
+
+def ingest_pdf_batch(
+    items: list[tuple[Path, str]],
+) -> list[BatchItemResult]:
+    """Ingest each PDF independently; partial success is explicit per file.
+
+    Sequential only — no background jobs or parallel workers in v1.
+    Invalid files become failed items with taxonomy codes (never silently skipped).
+    """
+    results: list[BatchItemResult] = []
+    for tmp_path, original_basename in items:
+        safe_name = Path(original_basename).name
+        prefail = _validate_pdf_item(tmp_path, safe_name)
+        if prefail is not None:
+            results.append(prefail)
+            continue
+
+        outcome = ingest_pdf_path(tmp_path, safe_name)
+        if isinstance(outcome, IngestFailure):
+            results.append(
+                BatchItemResult(
+                    filename=safe_name,
+                    ok=False,
+                    run_id=outcome.run_id,
+                    error_code=outcome.error_code,
+                    detail=outcome.detail,
+                    adapter_id=outcome.adapter_id,
+                )
+            )
+            continue
+
+        assert isinstance(outcome, IngestSuccess)
+        results.append(
+            BatchItemResult(
+                filename=safe_name,
+                ok=True,
+                run_id=outcome.run_id,
+                statement_id=_first_statement_id(outcome.run_id),
+                adapter_id=outcome.adapter_id,
+            )
+        )
+    return results
 
 
 def ingest_pdf_path(

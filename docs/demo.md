@@ -33,7 +33,7 @@ Point at any amount on the dashboard or in seed output. Narrate: storage and ari
 
 ### 3. Fail-loud (negative)
 
-Upload a non-PDF (or empty) statement via the Statements UI, or hit an ingest path with a malformed payload. Expect a loud rejection (4xx / explicit error)—not a partial write.
+Upload a non-PDF (or empty) statement via the Statements UI, or hit an ingest path with a malformed payload. Expect a loud rejection (4xx / explicit error)—not a partial write. The Statements dropzone also accepts multiple PDFs in one submit; each file is ingested independently (partial success) — see `scripts/qa_bulk_upload.py`.
 
 ### 4. Zero-PII egress (contract)
 

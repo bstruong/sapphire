@@ -170,7 +170,7 @@
             window.scrollTo({ top: 0 });
         });
 
-        // Hidden file input: surface the chosen basename in the dropzone label.
+        // Hidden file input: surface count / basenames in the dropzone label.
         document.body.addEventListener("change", function (event) {
             var input = event.target;
             if (!input || input.id !== "statement-file") {
@@ -182,14 +182,22 @@
             if (!dropzone || !prompt || !filename) {
                 return;
             }
-            var chosen = input.files && input.files[0] ? input.files[0].name : "";
-            if (chosen) {
-                prompt.textContent = chosen;
-                filename.textContent = "Ready to upload · stays on this Vault";
+            var list = input.files ? Array.prototype.slice.call(input.files) : [];
+            if (list.length === 1) {
+                prompt.textContent = list[0].name;
+                filename.textContent = "Ready to upload · stays on this Vault · max 20 files";
+                dropzone.classList.add("has-file");
+            } else if (list.length > 1) {
+                var names = list.slice(0, 3).map(function (f) { return f.name; }).join(", ");
+                if (list.length > 3) {
+                    names += ", …";
+                }
+                prompt.textContent = list.length + " PDFs selected · click to change";
+                filename.textContent = names + " · max 20 files";
                 dropzone.classList.add("has-file");
             } else {
-                prompt.textContent = "Drop a PDF here or click to choose";
-                filename.textContent = "PDF only · parsed on this Vault";
+                prompt.textContent = "Drop PDFs here or click to choose";
+                filename.textContent = "PDF only · parsed on this Vault · max 20 files";
                 dropzone.classList.remove("has-file");
             }
         });

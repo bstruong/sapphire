@@ -11,13 +11,13 @@
           hx-target="#pane-vault-body"
           hx-indicator="#pane-vault-body">
         <h2>Statement upload</h2>
-        <p class="muted">Upload a supported statement PDF (Chase credit card, Charles Schwab Bank checking, Schwab or Vanguard brokerage, Standard Bank/Card fixtures). Every upload is validated before it is saved.</p>
+        <p class="muted">Upload supported statement PDFs (Chase credit card, Charles Schwab Bank checking, Schwab or Vanguard brokerage, Standard Bank/Card fixtures). Every file is validated before it is saved. Failures are per-file — one bad PDF does not block the others.</p>
         <label class="dropzone" id="upload-dropzone" for="statement-file">
             <svg class="icon"><use href="#i-upload"/></svg>
-            <span class="strong" id="upload-prompt">Drop a PDF here or click to choose</span>
-            <span class="sub" id="upload-filename">PDF only &middot; parsed on this Vault</span>
-            <input type="file" id="statement-file" name="file" class="input-file-hidden"
-                   accept="application/pdf,.pdf" required>
+            <span class="strong" id="upload-prompt">Drop PDFs here or click to choose</span>
+            <span class="sub" id="upload-filename">PDF only &middot; parsed on this Vault &middot; max 20 files</span>
+            <input type="file" id="statement-file" name="files" class="input-file-hidden"
+                   accept="application/pdf,.pdf" multiple required>
         </label>
         <span class="lock-note"><svg class="icon"><use href="#i-lock"/></svg>Parsed locally &mdash; raw statements never leave the Vault</span>
         <div>

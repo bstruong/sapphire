@@ -1,0 +1,66 @@
+<section class="view upload-batch-result" id="upload-batch-result">
+    <header class="page-head">
+        <h1>Upload results</h1>
+        <p>Each PDF was ingested independently</p>
+    </header>
+
+    <div class="card">
+        <div class="banner" role="status">
+            <strong>Uploaded {{ succeeded }} of {{ total }}</strong>
+            {% if failed %}
+            <p class="muted">{{ failed }} failed &middot; fail-loud &middot; nothing silently skipped</p>
+            {% else %}
+            <p class="muted">All files accepted &middot; fail-loud contracts held</p>
+            {% endif %}
+        </div>
+
+        <div class="card-flush table-scroll">
+            <table class="table" id="upload-batch-table">
+                <thead>
+                    <tr>
+                        <th>File</th>
+                        <th>Status</th>
+                        <th>Detail</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in results %}
+                    <tr>
+                        <td>{{ row.filename }}</td>
+                        {% if row.ok %}
+                        <td class="status-ok"><strong>OK</strong></td>
+                        <td class="muted">
+                            {% if row.adapter_id %}{{ row.adapter_id }}{% endif %}
+                            {% if row.statement_id %} &middot; {{ row.statement_id }}{% endif %}
+                        </td>
+                        <td class="amount">
+                            {% if row.statement_id %}
+                            <button type="button" class="btn btn-ghost btn-sm"
+                                    hx-get="/api/v1/dashboard/statements/{{ row.statement_id }}"
+                                    hx-target="#pane-vault-body"
+                                    hx-swap="innerHTML">Open</button>
+                            {% endif %}
+                        </td>
+                        {% else %}
+                        <td class="status-fail"><strong>FAIL</strong></td>
+                        <td>
+                            <code>{{ row.error_code }}</code>
+                            {% if row.detail %} &mdash; {{ row.detail }}{% endif %}
+                        </td>
+                        <td></td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="alert-actions">
+            <button type="button" class="btn btn-ghost btn-sm"
+                    hx-get="/api/v1/dashboard/statements"
+                    hx-target="#pane-vault-body"
+                    hx-swap="innerHTML">Back to statements</button>
+        </div>
+    </div>
+</section>
