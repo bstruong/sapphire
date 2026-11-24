@@ -1,8 +1,8 @@
 <section class="view ledger-result" data-nav="statements">
     <button type="button" class="btn-link"
-            hx-get="/api/v1/dashboard/overview"
+            hx-get="{{ back_href }}"
             hx-target="#pane-vault-body"
-            hx-swap="innerHTML"><svg class="icon"><use href="#i-back"/></svg>Back to overview</button>
+            hx-swap="innerHTML"><svg class="icon"><use href="#i-back"/></svg>{{ back_label }}</button>
 
     <header class="page-head">
         <h1>Vault Ledger</h1>

@@ -37,3 +37,4 @@ Shape Up intentionally avoids high-fidelity pixel comps as a gating artifact. Pr
 | [chase_credit_card_copy_note.md](chase_credit_card_copy_note.md) | **Proposed** — Honest supported-upload copy for Chase **card** (not checking) ([pitch](../pitch_chase_credit_card.md)) |
 | [schwab_checking_copy_note.md](schwab_checking_copy_note.md) | **Proposed** — Supported-upload copy includes Schwab Bank **checking** ([pitch](../pitch_schwab_checking.md)) |
 | [history_charts_wireframe.html](history_charts_wireframe.html) | **Built** — Overview History: closing balances over periods + category income/spend by month ([pitch](../pitch_history_charts.md)) |
+| [statement_history_wireframe.html](statement_history_wireframe.html) | **Built** — Full statement history from Recent → View all (account/year filters, Open → ledger) |

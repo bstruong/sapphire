@@ -399,7 +399,11 @@ class TestStatementsView:
         _upload(client, tmp_path, "chase_checking_happy")
         html = client.get("/api/v1/dashboard/statements", headers=HX).text
         assert 'id="statements-recent"' in html
-        assert re.search(r'hx-get="/api/v1/dashboard/statements/[0-9a-f-]{36}"', html)
+        assert re.search(
+            r'hx-get="/api/v1/dashboard/statements/[0-9a-f-]{36}(\?from=statements)?"',
+            html,
+        )
+        assert 'id="view-all-history"' in html
         assert "Chase" in html
         assert "No statements yet" not in html
 

@@ -39,7 +39,10 @@ from app.db.repository import (
     get_canonical_statement,
     get_run_statements,
     get_statement_holdings,
+    list_accounts_with_statements,
     list_recent_statements,
+    list_statement_history,
+    list_statement_years,
 )
 from app.mcp.cloud_tools import CloudToolError, get_financial_summary
 from app.models.exceptions import AssignExceedsAvailableError, TokenError
@@ -249,21 +252,41 @@ def _render_budget_html(
     )
 
 
+def _statement_row_dict(account: Any, statement: Any, txn_count: int) -> dict[str, Any]:
+    """Serialize one statement list row (no transaction bodies)."""
+    return {
+        "statement_id": str(statement.statement_id),
+        "account_id": str(account.account_id),
+        "institution": account.institution,
+        "account_type": account.account_type.value,
+        "account_mask": account.account_mask,
+        "start_date": statement.statement_start_date.isoformat(),
+        "end_date": statement.statement_end_date.isoformat(),
+        "year": statement.statement_end_date.year,
+        "transaction_count": txn_count,
+    }
+
+
 def _statement_rows(*, limit: int = 10) -> list[dict[str, Any]]:
     """Newest statements (header fields and row counts only, no transactions)."""
     with get_db_connection() as conn:
         recent = list_recent_statements(conn, limit=limit)
     return [
-        {
-            "statement_id": str(statement.statement_id),
-            "institution": account.institution,
-            "account_type": account.account_type.value,
-            "account_mask": account.account_mask,
-            "start_date": statement.statement_start_date.isoformat(),
-            "end_date": statement.statement_end_date.isoformat(),
-            "transaction_count": txn_count,
-        }
+        _statement_row_dict(account, statement, txn_count)
         for account, statement, txn_count in recent
+    ]
+
+
+def _group_statements_by_year(
+    rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Group statement rows into newest-first year buckets for the history UI."""
+    by_year: dict[int, list[dict[str, Any]]] = {}
+    for row in rows:
+        by_year.setdefault(int(row["year"]), []).append(row)
+    return [
+        {"year": year, "count": len(by_year[year]), "statements": by_year[year]}
+        for year in sorted(by_year.keys(), reverse=True)
     ]
 
 
@@ -281,6 +304,54 @@ def _render_statements_html() -> str:
             detail="Could not load recent statements from the Vault database.",
         )
     return env.get_template("statements.html").render(statements=rows)
+
+
+def _render_statement_history_html(
+    *,
+    account_id: UUID | None = None,
+    year: int | None = None,
+) -> str:
+    """Full statement archive with account/year filters and year groups."""
+    try:
+        with get_db_connection() as conn:
+            history = list_statement_history(conn, account_id=account_id, year=year)
+            accounts = list_accounts_with_statements(conn)
+            years = list_statement_years(conn)
+    except Exception as exc:  # noqa: BLE001
+        logger.error(
+            "Dashboard statement history query failed",
+            extra={"error_type": type(exc).__name__},
+        )
+        return env.get_template("upload_error.html").render(
+            error_code="STATEMENT_HISTORY_QUERY_FAILED",
+            detail="Could not load statement history from the Vault database.",
+        )
+
+    rows = [
+        _statement_row_dict(account, statement, txn_count)
+        for account, statement, txn_count in history
+    ]
+    account_options = [
+        {
+            "account_id": str(acc.account_id),
+            "label": (
+                f"{acc.institution} · "
+                f"{format_snake_label(acc.account_type.value)} · "
+                f"{acc.account_mask}"
+            ),
+        }
+        for acc in accounts
+    ]
+    return env.get_template("statement_history.html").render(
+        statements=rows,
+        year_groups=_group_statements_by_year(rows),
+        total_count=len(rows),
+        account_options=account_options,
+        year_options=years,
+        selected_account=str(account_id) if account_id else "all",
+        selected_year=str(year) if year is not None else "all",
+        has_any_statements=bool(accounts),
+    )
 
 
 def _render_dashboard() -> str:
@@ -365,6 +436,8 @@ def _render_ledger_html(
     ledgers: list[dict[str, Any]],
     run_id: UUID | None = None,
     adapter_id: str | None = None,
+    back_href: str = "/api/v1/dashboard/overview",
+    back_label: str = "Back to overview",
 ) -> str:
     if not ledgers:
         return env.get_template("ledger_empty.html").render()
@@ -372,6 +445,8 @@ def _render_ledger_html(
         ledgers=ledgers,
         run_id=str(run_id) if run_id else None,
         adapter_id=adapter_id or "",
+        back_href=back_href,
+        back_label=back_label,
     )
 
 
@@ -548,6 +623,78 @@ async def get_statements(request: Request) -> HTMLResponse:
 
 
 @dashboard_api.get(
+    "/statements/history",
+    response_class=HTMLResponse,
+    responses={
+        400: {"description": "Requires HTMX, invalid filter, or history query failed"}
+    },
+)
+async def get_statement_history(
+    request: Request,
+    account: str = "all",
+    year: str = "all",
+) -> HTMLResponse:
+    """Full Vault statement archive with account and year filters."""
+    hx_request = request.headers.get("HX-Request", "").lower()
+    if hx_request != "true":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This endpoint requires an HTMX request (HX-Request: true).",
+        )
+
+    account_id: UUID | None = None
+    account_raw = (account or "all").strip().lower()
+    if account_raw not in {"", "all"}:
+        try:
+            account_id = UUID(account_raw)
+        except ValueError:
+            return HTMLResponse(
+                content=env.get_template("upload_error.html").render(
+                    error_code="INVALID_ACCOUNT_FILTER",
+                    detail="Account filter must be a UUID or 'all'.",
+                ),
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+    year_value: int | None = None
+    year_raw = (year or "all").strip().lower()
+    if year_raw not in {"", "all"}:
+        if not year_raw.isdigit():
+            return HTMLResponse(
+                content=env.get_template("upload_error.html").render(
+                    error_code="INVALID_YEAR_FILTER",
+                    detail="Year filter must be a four-digit year or 'all'.",
+                ),
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        year_value = int(year_raw)
+        if year_value < 1900 or year_value > 2100:
+            return HTMLResponse(
+                content=env.get_template("upload_error.html").render(
+                    error_code="INVALID_YEAR_FILTER",
+                    detail="Year filter is out of range.",
+                ),
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+    logger.info(
+        "Dashboard statement history requested",
+        extra={
+            "surface": "statement_history",
+            "has_account_filter": account_id is not None,
+            "has_year_filter": year_value is not None,
+        },
+    )
+    html = _render_statement_history_html(account_id=account_id, year=year_value)
+    status_code = (
+        status.HTTP_400_BAD_REQUEST
+        if "STATEMENT_HISTORY_QUERY_FAILED" in html
+        else status.HTTP_200_OK
+    )
+    return HTMLResponse(content=html, status_code=status_code)
+
+
+@dashboard_api.get(
     "/audit",
     response_class=HTMLResponse,
     responses={400: {"description": "Requires HTMX request"}},
@@ -581,9 +728,12 @@ async def get_statement_ledger(
             detail="This endpoint requires an HTMX request (HX-Request: true).",
         )
 
+    # Query param `from` is reserved in Python; read it from the request.
+    origin = (request.query_params.get("from") or "").strip().lower()
+
     logger.info(
         "Dashboard statement drill-in",
-        extra={"statement_id": str(statement_id)},
+        extra={"statement_id": str(statement_id), "from_view": origin or "default"},
     )
 
     try:
@@ -626,7 +776,23 @@ async def get_statement_ledger(
             status_code=status.HTTP_400_BAD_REQUEST,
         )
 
-    return HTMLResponse(content=_render_ledger_html(ledgers=[block]))
+    if origin == "history":
+        back_href = "/api/v1/dashboard/statements/history"
+        back_label = "Back to statement history"
+    elif origin == "statements":
+        back_href = "/api/v1/dashboard/statements"
+        back_label = "Back to statements"
+    else:
+        back_href = "/api/v1/dashboard/overview"
+        back_label = "Back to overview"
+
+    return HTMLResponse(
+        content=_render_ledger_html(
+            ledgers=[block],
+            back_href=back_href,
+            back_label=back_label,
+        )
+    )
 
 
 @dashboard_api.post(
