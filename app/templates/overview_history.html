@@ -181,7 +181,7 @@
       var btn = document.createElement("button");
       var k = keyFor(viewYear, m);
       btn.type = "button";
-      btn.className = "cal-month-btn";
+      btn.setAttribute("class", "cal-month-btn");
       btn.setAttribute("role", "option");
       btn.textContent = MONTH_SHORT[m - 1];
       btn.disabled = !available[k];
