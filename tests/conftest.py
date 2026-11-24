@@ -221,22 +221,30 @@ def _session_schema(postgres_url: str) -> None:
         conn.commit()
 
 
+_TRUNCATE_LEDGER_SQL = """
+TRUNCATE TABLE transaction_spend_labels, envelopes, raw_tokens, raw_pages,
+               transactions, holdings,
+               statement_depository_summaries, statement_credit_summaries,
+               statement_brokerage_summaries, statements, accounts,
+               extraction_runs, raw_payloads CASCADE;
+"""
+
+
 @pytest.fixture()
 def db_conn(postgres_url: str) -> Iterator[psycopg.Connection]:
-    """Yield a connection; truncate tables after each test (worker-local DB)."""
+    """Yield a connection; truncate tables before and after each test."""
     conn = psycopg.connect(postgres_url)
     try:
+        try:
+            conn.execute(_TRUNCATE_LEDGER_SQL)
+            conn.commit()
+        except psycopg.Error as exc:
+            logger.debug("Setup TRUNCATE failed: %s", exc)
+            conn.rollback()
         yield conn
     finally:
         try:
-            conn.execute(
-                """
-                TRUNCATE TABLE envelopes, raw_tokens, raw_pages, transactions,
-                               statement_depository_summaries, statement_credit_summaries,
-                               statement_brokerage_summaries, statements, accounts,
-                               extraction_runs, raw_payloads CASCADE;
-                """
-            )
+            conn.execute(_TRUNCATE_LEDGER_SQL)
             conn.commit()
         except psycopg.Error as exc:
             logger.debug("Cleanup TRUNCATE failed: %s", exc)
