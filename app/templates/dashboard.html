@@ -202,6 +202,215 @@
             }
         });
 
+        // Upload progress bar: single-file advancing bar via HTMX indicator;
+        // bulk uses sequential upload-item calls with determinate N of M.
+        function uploadProgressEls() {
+            return {
+                root: document.getElementById("upload-progress"),
+                label: document.getElementById("upload-progress-label"),
+                bar: document.getElementById("upload-progress-bar"),
+                fill: document.getElementById("upload-progress-fill"),
+                btn: document.getElementById("upload-btn")
+            };
+        }
+
+        function setUploadProgressPct(pct) {
+            var els = uploadProgressEls();
+            if (!els.fill || !els.bar) {
+                return;
+            }
+            var clamped = Math.max(0, Math.min(100, Math.round(pct)));
+            els.fill.style.width = clamped + "%";
+            els.bar.setAttribute("aria-valuenow", String(clamped));
+        }
+
+        function showUploadProgress(labelText, opts) {
+            var els = uploadProgressEls();
+            if (!els.root) {
+                return;
+            }
+            opts = opts || {};
+            els.root.classList.add("is-active");
+            els.root.classList.toggle("is-advancing", !!opts.advancing);
+            if (els.label) {
+                els.label.textContent = labelText;
+            }
+            if (typeof opts.pct === "number") {
+                setUploadProgressPct(opts.pct);
+            }
+            if (els.btn) {
+                els.btn.disabled = true;
+            }
+        }
+
+        function hideUploadProgress() {
+            var els = uploadProgressEls();
+            if (!els.root) {
+                return;
+            }
+            els.root.classList.remove("is-active", "is-advancing");
+            setUploadProgressPct(0);
+            if (els.label) {
+                els.label.textContent = "Uploading…";
+            }
+            if (els.btn) {
+                els.btn.disabled = false;
+            }
+        }
+
+        document.body.addEventListener("htmx:beforeRequest", function (event) {
+            var path = (event.detail.pathInfo && event.detail.pathInfo.requestPath) || "";
+            if (path.indexOf("/api/v1/dashboard/upload") === -1) {
+                return;
+            }
+            // Single-file (or non-JS bulk fallback): advancing bar through the request.
+            showUploadProgress("Uploading…", { advancing: true, pct: 0 });
+        });
+
+        document.body.addEventListener("htmx:xhr:progress", function (event) {
+            var detail = event.detail || {};
+            var path = (detail.pathInfo && detail.pathInfo.requestPath) || "";
+            if (path.indexOf("/api/v1/dashboard/upload") === -1) {
+                return;
+            }
+            if (!detail.lengthComputable || !detail.total) {
+                return;
+            }
+            var els = uploadProgressEls();
+            if (els.root) {
+                els.root.classList.remove("is-advancing");
+            }
+            setUploadProgressPct((detail.loaded / detail.total) * 100);
+        });
+
+        document.body.addEventListener("htmx:afterRequest", function (event) {
+            var path = (event.detail.pathInfo && event.detail.pathInfo.requestPath) || "";
+            if (path.indexOf("/api/v1/dashboard/upload") === -1) {
+                return;
+            }
+            // Bulk sequential path manages its own lifecycle.
+            if (document.body.dataset.uploadBulkActive === "1") {
+                return;
+            }
+            hideUploadProgress();
+        });
+
+        document.body.addEventListener("htmx:confirm", function (event) {
+            var elt = event.detail.elt;
+            if (!elt || elt.id !== "upload-form") {
+                return;
+            }
+            var input = document.getElementById("statement-file");
+            var files = input && input.files ? Array.prototype.slice.call(input.files) : [];
+            if (files.length <= 1) {
+                // Let HTMX post the single file (ledger swap + advancing bar).
+                return;
+            }
+            // Bulk: take over with sequential upload-item + N of M progress.
+            event.preventDefault();
+            runBulkUploadWithProgress(files);
+        });
+
+        function runBulkUploadWithProgress(files) {
+            var total = files.length;
+            var results = [];
+            var pane = document.getElementById("pane-vault-body");
+            document.body.dataset.uploadBulkActive = "1";
+
+            function finish(html) {
+                document.body.dataset.uploadBulkActive = "0";
+                hideUploadProgress();
+                if (pane && typeof html === "string") {
+                    pane.innerHTML = html;
+                    if (window.htmx) {
+                        window.htmx.process(pane);
+                    }
+                }
+            }
+
+            function failLoud(message) {
+                document.body.dataset.uploadBulkActive = "0";
+                hideUploadProgress();
+                if (pane) {
+                    pane.innerHTML =
+                        '<section class="view" data-nav="statements">' +
+                        '<div class="alert" role="alert">' +
+                        '<svg class="icon"><use href="#i-alert"/></svg>' +
+                        "<div><h4>Upload failed</h4>" +
+                        "<p><code>UPLOAD_PROGRESS_FAILED</code> — " +
+                        String(message).replace(/</g, "&lt;") +
+                        "</p></div></div></section>";
+                }
+            }
+
+            function step(index) {
+                if (index >= total) {
+                    showUploadProgress("Uploaded " + total + " of " + total, { pct: 100 });
+                    return fetch("/api/v1/dashboard/upload-summary", {
+                        method: "POST",
+                        headers: {
+                            "HX-Request": "true",
+                            "Content-Type": "application/json",
+                            Accept: "text/html"
+                        },
+                        body: JSON.stringify({ results: results })
+                    }).then(function (resp) {
+                        return resp.text().then(function (text) {
+                            if (!resp.ok) {
+                                throw new Error(text || ("summary HTTP " + resp.status));
+                            }
+                            finish(text);
+                        });
+                    }).catch(function (err) {
+                        failLoud(err && err.message ? err.message : String(err));
+                    });
+                }
+
+                var file = files[index];
+                var n = index + 1;
+                showUploadProgress("Uploading " + n + " of " + total, {
+                    pct: (index / total) * 100
+                });
+
+                var formData = new FormData();
+                formData.append("files", file, file.name);
+
+                return fetch("/api/v1/dashboard/upload-item", {
+                    method: "POST",
+                    headers: {
+                        "HX-Request": "true",
+                        Accept: "application/json"
+                    },
+                    body: formData
+                }).then(function (resp) {
+                    return resp.json().then(function (body) {
+                        if (!resp.ok && (!body || typeof body.ok !== "boolean")) {
+                            throw new Error(
+                                (body && body.detail) || ("upload-item HTTP " + resp.status)
+                            );
+                        }
+                        results.push({
+                            filename: body.filename || file.name,
+                            ok: !!body.ok,
+                            statement_id: body.statement_id || null,
+                            run_id: body.run_id || null,
+                            error_code: body.error_code || null,
+                            detail: body.detail || null,
+                            adapter_id: body.adapter_id || null
+                        });
+                        showUploadProgress("Uploading " + n + " of " + total, {
+                            pct: (n / total) * 100
+                        });
+                        return step(index + 1);
+                    });
+                }).catch(function (err) {
+                    failLoud(err && err.message ? err.message : String(err));
+                });
+            }
+
+            step(0);
+        }
+
         document.body.addEventListener("htmx:beforeSwap", function (event) {
             var xhr = event.detail.xhr;
             if (!xhr || !xhr.responseURL) {
