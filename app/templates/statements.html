@@ -41,8 +41,12 @@
         <div class="card-head">
             <div>
                 <h2>Recent statements</h2>
-                <p>Select a row to open its transactions.</p>
+                <p>Newest periods only &mdash; open a row for transactions.</p>
             </div>
+            <button type="button" class="btn-link" id="view-all-history"
+                    hx-get="/api/v1/dashboard/statements/history"
+                    hx-target="#pane-vault-body"
+                    hx-swap="innerHTML">View all history &rarr;</button>
         </div>
         {% if statements %}
         <div class="card-flush table-scroll">
@@ -66,7 +70,7 @@
                         <td class="amount num">{{ row.transaction_count }}</td>
                         <td class="amount">
                             <button type="button" class="btn btn-ghost btn-sm"
-                                    hx-get="/api/v1/dashboard/statements/{{ row.statement_id }}"
+                                    hx-get="/api/v1/dashboard/statements/{{ row.statement_id }}?from=statements"
                                     hx-target="#pane-vault-body"
                                     hx-swap="innerHTML">Open</button>
                         </td>

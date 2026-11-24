@@ -823,6 +823,32 @@ def get_canonical_statement(
         return statement, summary, txns
 
 
+def _row_to_statement_tuple(
+    row: Sequence[object],
+) -> tuple[Account, CanonicalStatement, int]:
+    """Map a joined account/statement/count SQL row to domain objects."""
+    acc = Account(
+        account_id=UUID(str(row[0])),
+        institution=str(row[1]),
+        account_mask=str(row[2]),
+        account_domain=AccountDomain(str(row[3])),
+        account_type=AccountType(str(row[4])),
+        currency=CurrencyCode(str(row[5])),
+    )
+    stmt = CanonicalStatement(
+        statement_id=UUID(str(row[6])),
+        account_id=UUID(str(row[0])),
+        run_id=UUID(str(row[7])),
+        raw_payload_id=UUID(str(row[8])),
+        statement_start_date=row[9],  # type: ignore[arg-type]
+        statement_end_date=row[10],  # type: ignore[arg-type]
+        opening_balance_cents=int(row[11]),  # type: ignore[arg-type]
+        closing_balance_cents=int(row[12]),  # type: ignore[arg-type]
+        net_change_cents=int(row[13]),  # type: ignore[arg-type]
+    )
+    return acc, stmt, int(row[14])  # type: ignore[arg-type]
+
+
 def list_recent_statements(
     conn: psycopg.Connection, *, limit: int = 5
 ) -> list[tuple[Account, CanonicalStatement, int]]:
@@ -843,27 +869,78 @@ def list_recent_statements(
     with conn.cursor() as cur:
         cur.execute(query, (limit,))
         for r in cur.fetchall():
-            acc = Account(
-                account_id=UUID(str(r[0])),
-                institution=str(r[1]),
-                account_mask=str(r[2]),
-                account_domain=AccountDomain(str(r[3])),
-                account_type=AccountType(str(r[4])),
-                currency=CurrencyCode(str(r[5])),
-            )
-            stmt = CanonicalStatement(
-                statement_id=UUID(str(r[6])),
-                account_id=UUID(str(r[0])),
-                run_id=UUID(str(r[7])),
-                raw_payload_id=UUID(str(r[8])),
-                statement_start_date=r[9],
-                statement_end_date=r[10],
-                opening_balance_cents=int(r[11]),
-                closing_balance_cents=int(r[12]),
-                net_change_cents=int(r[13]),
-            )
-            results.append((acc, stmt, int(r[14])))
+            results.append(_row_to_statement_tuple(r))
     return results
+
+
+def list_statement_history(
+    conn: psycopg.Connection,
+    *,
+    account_id: UUID | None = None,
+    year: int | None = None,
+) -> list[tuple[Account, CanonicalStatement, int]]:
+    """Return all statements (newest first), optionally filtered by account/year.
+
+    Year is taken from ``statement_end_date``. Invalid years fail loudly.
+    """
+    if year is not None and (year < 1900 or year > 2100):
+        raise PersistenceError(f"list_statement_history year out of range: {year}")
+
+    query = """
+    SELECT a.account_id, a.institution, a.account_mask, a.account_domain, a.account_type, a.currency,
+           s.statement_id, s.run_id, s.raw_payload_id, s.statement_start_date, s.statement_end_date,
+           s.opening_balance_cents, s.closing_balance_cents, s.net_change_cents,
+           (SELECT COUNT(*) FROM transactions t WHERE t.statement_id = s.statement_id) AS txn_count
+    FROM statements s
+    JOIN accounts a ON s.account_id = a.account_id
+    WHERE (%s::uuid IS NULL OR s.account_id = %s::uuid)
+      AND (%s::int IS NULL OR EXTRACT(YEAR FROM s.statement_end_date)::int = %s)
+    ORDER BY s.statement_end_date DESC, s.statement_id DESC;
+    """
+    account_param = str(account_id) if account_id is not None else None
+    results: list[tuple[Account, CanonicalStatement, int]] = []
+    with conn.cursor() as cur:
+        cur.execute(query, (account_param, account_param, year, year))
+        for r in cur.fetchall():
+            results.append(_row_to_statement_tuple(r))
+    return results
+
+
+def list_accounts_with_statements(conn: psycopg.Connection) -> list[Account]:
+    """Accounts that have at least one statement, ordered for filter dropdowns."""
+    query = """
+    SELECT DISTINCT a.account_id, a.institution, a.account_mask, a.account_domain,
+           a.account_type, a.currency
+    FROM accounts a
+    JOIN statements s ON s.account_id = a.account_id
+    ORDER BY a.institution ASC, a.account_mask ASC, a.account_id ASC;
+    """
+    with conn.cursor() as cur:
+        cur.execute(query)
+        rows = cur.fetchall()
+    return [
+        Account(
+            account_id=UUID(str(r[0])),
+            institution=str(r[1]),
+            account_mask=str(r[2]),
+            account_domain=AccountDomain(str(r[3])),
+            account_type=AccountType(str(r[4])),
+            currency=CurrencyCode(str(r[5])),
+        )
+        for r in rows
+    ]
+
+
+def list_statement_years(conn: psycopg.Connection) -> list[int]:
+    """Distinct statement end-date years, newest first."""
+    query = """
+    SELECT DISTINCT EXTRACT(YEAR FROM statement_end_date)::int AS yr
+    FROM statements
+    ORDER BY yr DESC;
+    """
+    with conn.cursor() as cur:
+        cur.execute(query)
+        return [int(r[0]) for r in cur.fetchall()]
 
 
 def get_statement_holdings(

@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<!--
+  SAPPHIRE — Statement history (PROPOSED fat-marker wireframe)
+  Planning only. No product code. Synthetic data (*0000 / SYNTHETIC).
+
+  Flow:
+    1. Statements (today) — Recent statements + "View all history"
+    2. All history — full list, account filter, year groups, Open → ledger
+    3. Ledger — transactions for one statement (same Open target as today)
+-->
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SAPPHIRE — Statement history (proposed)</title>
+  <style>
+    :root {
+      --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+      --radius-lg: 20px;
+      --radius: 14px;
+      --radius-sm: 10px;
+      --sidebar: 264px;
+      --ease: cubic-bezier(.2, .7, .2, 1);
+      --sidebar-bg: #091225;
+      --sidebar-surface: rgba(255, 255, 255, .055);
+      --sidebar-border: rgba(255, 255, 255, .08);
+      --sidebar-text: #f7f9ff;
+      --sidebar-muted: #8e9ab5;
+    }
+    [data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #080d17;
+      --surface: #111827;
+      --surface-2: #172132;
+      --border: #29364b;
+      --border-soft: #1c2739;
+      --text: #edf2ff;
+      --text-2: #9eabc1;
+      --text-3: #68758d;
+      --accent: #6f8cff;
+      --accent-2: #9aafff;
+      --accent-soft: rgba(91, 140, 255, .12);
+      --on-accent: #ffffff;
+      --pos: #3ddc97;
+      --pos-soft: rgba(61, 220, 151, .12);
+      --neg: #ff6b7a;
+      --neg-soft: rgba(255, 107, 122, .12);
+      --shadow: 0 1px 0 rgba(255, 255, 255, .04) inset, 0 16px 40px rgba(0, 0, 0, .28);
+      --marker: #f5b84a;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: var(--font);
+      background:
+        radial-gradient(circle at 78% -10%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 32rem),
+        var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+    button, select { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    .num, .amount { font-variant-numeric: tabular-nums; }
+    .amount { text-align: right; white-space: nowrap; }
+    .period { white-space: nowrap; }
+    .muted { color: var(--text-2); }
+    .faint { color: var(--text-3); }
+    .strong { font-weight: 600; }
+    .sub { display: block; font-size: 12.5px; color: var(--text-2); margin-top: 2px; }
+    .pos { color: var(--pos); }
+    .neg { color: var(--neg); }
+
+    /* Review chrome */
+    .review-bar {
+      position: sticky; top: 0; z-index: 30;
+      display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px;
+      padding: 10px 18px;
+      background: #0c1220;
+      border-bottom: 1px solid var(--border);
+      font-size: 12.5px;
+    }
+    .review-bar strong {
+      text-transform: uppercase; letter-spacing: .06em; font-size: 11px; color: var(--marker);
+    }
+    .tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+    .tabs button {
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-2);
+      padding: 7px 12px;
+      border-radius: 999px;
+      font-size: 12.5px;
+      font-weight: 550;
+    }
+    .tabs button[aria-selected="true"] {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+      color: var(--text);
+    }
+    .review-note { color: var(--text-3); margin-left: auto; max-width: 36rem; }
+
+    .app { display: grid; grid-template-columns: var(--sidebar) 1fr; min-height: calc(100vh - 48px); }
+
+    .sidebar {
+      position: sticky; top: 48px; height: calc(100vh - 48px);
+      display: flex; flex-direction: column; gap: 24px;
+      padding: 24px 16px 18px;
+      border-right: 1px solid var(--sidebar-border);
+      background:
+        radial-gradient(circle at 20% 0%, rgba(111,140,255,.22), transparent 55%),
+        var(--sidebar-bg);
+      color: var(--sidebar-text);
+    }
+    .brand { display: flex; align-items: center; gap: 10px; padding: 4px 10px; }
+    .brand-mark {
+      width: 28px; height: 28px; border-radius: 8px;
+      display: grid; place-items: center; font-size: 12px; font-weight: 700;
+      background: linear-gradient(135deg, #7aa2ff, #3a5bd9 60%, #1f2f86);
+    }
+    .brand-name { font-weight: 650; letter-spacing: .14em; font-size: 13px; }
+    .nav { display: flex; flex-direction: column; gap: 2px; }
+    .nav-label {
+      font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+      color: var(--sidebar-muted); padding: 0 12px 6px;
+    }
+    .nav button {
+      display: flex; align-items: center; gap: 10px;
+      width: 100%; padding: 9px 12px; border: 0; border-radius: var(--radius-sm);
+      background: transparent; color: var(--sidebar-muted); text-align: left;
+    }
+    .nav button[aria-current="page"] {
+      background: var(--sidebar-surface); color: var(--sidebar-text);
+    }
+    .vault-card {
+      margin-top: auto; padding: 14px; border-radius: var(--radius);
+      background: var(--sidebar-surface); border: 1px solid var(--sidebar-border);
+      font-size: 12px; color: var(--sidebar-muted);
+    }
+    .vault-card .row { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; color: var(--sidebar-text); }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--pos); box-shadow: 0 0 0 4px var(--pos-soft); }
+
+    .main { min-width: 0; }
+    .topbar {
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+      padding: 22px 36px 0;
+    }
+    .topbar h1 { font-size: 22px; font-weight: 650; letter-spacing: -.01em; }
+    .topbar p { font-size: 13px; color: var(--text-2); margin-top: 4px; }
+    .content { padding: 20px 36px 80px; max-width: 1100px; display: grid; gap: 20px; }
+
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      height: 38px; padding: 0 16px; border-radius: 10px; border: 1px solid transparent;
+      font-weight: 550; font-size: 13.5px; white-space: nowrap;
+    }
+    .btn-primary { background: var(--accent); color: var(--on-accent); }
+    .btn-ghost { background: var(--surface); border-color: var(--border); color: var(--text); }
+    .btn-sm { height: 30px; padding: 0 12px; font-size: 12.5px; border-radius: 8px; }
+    .btn-link {
+      background: none; border: 0; color: var(--accent-2);
+      padding: 0; height: auto; font-weight: 550; font-size: 13px;
+    }
+    .btn-link:hover { text-decoration: underline; }
+
+    .card {
+      background: var(--surface); border: 1px solid var(--border-soft);
+      border-radius: var(--radius-lg); box-shadow: var(--shadow); overflow: hidden;
+    }
+    .card-head {
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+      padding: 18px 22px 12px;
+    }
+    .card-head h2 { font-size: 15px; font-weight: 620; }
+    .card-head p { font-size: 12.5px; color: var(--text-2); margin-top: 2px; }
+    .card-body { padding: 0 22px 22px; }
+    .drop {
+      padding: 18px 22px 22px; display: grid; gap: 12px;
+    }
+    .dropzone {
+      border: 1.5px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 22px; text-align: center; color: var(--text-2);
+      background: var(--surface-2);
+    }
+    .dropzone .strong { color: var(--text); display: block; margin-bottom: 4px; }
+    .lock-note { font-size: 12.5px; color: var(--text-3); }
+
+    .table { width: 100%; border-collapse: collapse; }
+    .table th {
+      text-align: left; padding: 10px 22px;
+      font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3);
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .table th.amount { text-align: right; }
+    .table td { padding: 13px 22px; border-bottom: 1px solid var(--border-soft); vertical-align: top; }
+    .table tr:last-child td { border-bottom: 0; }
+    .table tbody tr:hover td { background: var(--surface-2); }
+
+    .filters {
+      display: flex; flex-wrap: wrap; gap: 10px; align-items: end;
+      padding: 0 22px 14px;
+    }
+    .field { display: grid; gap: 6px; }
+    .field label { font-size: 12px; color: var(--text-2); font-weight: 520; }
+    .select {
+      height: 36px; min-width: 180px; padding: 0 12px;
+      background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+    }
+
+    .year-label {
+      padding: 10px 22px 4px;
+      font-size: 12px; font-weight: 650; letter-spacing: .04em;
+      text-transform: uppercase; color: var(--text-3);
+      background: color-mix(in srgb, var(--surface-2) 70%, transparent);
+      border-top: 1px solid var(--border-soft);
+    }
+    .year-label:first-of-type { border-top: 0; }
+
+    .chip {
+      display: inline-flex; align-items: center;
+      padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600;
+    }
+    .chip-neutral { color: var(--text-2); background: var(--surface-2); }
+    .chip-accent { color: var(--accent-2); background: var(--accent-soft); }
+    .chip-pos { color: var(--pos); background: var(--pos-soft); }
+
+    .marker {
+      border-left: 3px solid var(--marker);
+      margin: 0 22px 18px;
+      padding: 8px 12px;
+      background: rgba(245, 184, 74, .08);
+      color: var(--text-2);
+      font-size: 12.5px;
+      border-radius: 0 10px 10px 0;
+    }
+    .marker strong { color: var(--marker); text-transform: uppercase; letter-spacing: .04em; font-size: 11px; }
+
+    .stmt-head {
+      display: flex; align-items: center; gap: 14px;
+      padding: 18px 22px 8px;
+    }
+    .avatar {
+      width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center;
+      font-weight: 700; color: #fff;
+      background: linear-gradient(135deg, #27b4e6, #0b7fb3);
+    }
+    .stmt-stats {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px;
+      background: var(--border-soft); border-top: 1px solid var(--border-soft); border-bottom: 1px solid var(--border-soft);
+    }
+    .stmt-stats > div { background: var(--surface); padding: 14px 22px; }
+    .stmt-stats .eyebrow {
+      font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3);
+    }
+    .stmt-stats .v { font-size: 18px; font-weight: 650; margin-top: 4px; }
+
+    .breadcrumb {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 13px; color: var(--text-2); margin-bottom: 4px;
+    }
+    .breadcrumb .sep { color: var(--text-3); }
+
+    .screen { display: none; }
+    .screen.active { display: block; }
+
+    .count-pill {
+      font-size: 12px; color: var(--text-3); font-weight: 550;
+      padding: 4px 10px; border-radius: 999px; background: var(--surface-2);
+    }
+
+    @media (max-width: 900px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar { position: static; height: auto; }
+      .topbar, .content { padding-left: 18px; padding-right: 18px; }
+      .stmt-stats { grid-template-columns: 1fr; }
+      .review-note { margin-left: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="review-bar" role="navigation" aria-label="Wireframe screens">
+    <strong>Wireframe</strong>
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" aria-selected="true" data-screen="recent">1 · Recent (today)</button>
+      <button type="button" role="tab" aria-selected="false" data-screen="history">2 · All history</button>
+      <button type="button" role="tab" aria-selected="false" data-screen="ledger">3 · Open → ledger</button>
+    </div>
+    <span class="review-note">Proposed only · Vault dark theme · synthetic Schwab / Chase · no product code</span>
+  </div>
+
+  <div class="app">
+    <aside class="sidebar" aria-label="Vault nav">
+      <div class="brand">
+        <div class="brand-mark">S</div>
+        <div class="brand-name">SAPPHIRE</div>
+      </div>
+      <nav class="nav">
+        <div class="nav-label">Vault</div>
+        <button type="button">Overview</button>
+        <button type="button" aria-current="page">Statements</button>
+        <button type="button">Ledgers</button>
+      </nav>
+      <div class="vault-card">
+        <div class="row"><span class="dot"></span> Local Vault</div>
+        <p style="margin-top:8px">Parsed on-box · raw PDFs stay here</p>
+      </div>
+    </aside>
+
+    <div class="main">
+      <!-- ========== 1 · Recent (baseline + entry point) ========== -->
+      <div id="screen-recent" class="screen active">
+        <div class="topbar">
+          <div>
+            <h1>Statements</h1>
+            <p>Upload and validate PDFs locally</p>
+          </div>
+        </div>
+        <div class="content">
+          <section class="card drop" aria-label="Upload">
+            <h2>Statement upload</h2>
+            <p class="muted">Upload supported statement PDFs. Failures are per-file — one bad PDF does not block the others.</p>
+            <div class="dropzone">
+              <span class="strong">Drop PDFs here or click to choose</span>
+              <span class="sub" style="display:block;margin-top:4px">PDF only · parsed on this Vault · max 20 files</span>
+            </div>
+            <p class="lock-note">Parsed locally — raw statements never leave the Vault</p>
+            <div><button type="button" class="btn btn-primary">Upload to Vault</button></div>
+          </section>
+
+          <section class="card" aria-label="Recent statements">
+            <div class="card-head">
+              <div>
+                <h2>Recent statements</h2>
+                <p>Newest periods only (today: limited list — screenshot had 8 Schwab Bank rows).</p>
+              </div>
+              <button type="button" class="btn-link" data-goto="history" id="view-all-cta">View all history →</button>
+            </div>
+            <div class="marker">
+              <strong>Entry point</strong>
+              Primary path from today’s Recent card: <em>View all history</em>.
+              Keeps upload + recent on Statements; full archive is one click away.
+            </div>
+            <table class="table" id="recent-table">
+              <thead>
+                <tr>
+                  <th>Account</th>
+                  <th class="period">Period</th>
+                  <th class="amount">Transactions</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="recent-body"></tbody>
+            </table>
+          </section>
+        </div>
+      </div>
+
+      <!-- ========== 2 · Full history ========== -->
+      <div id="screen-history" class="screen">
+        <div class="topbar">
+          <div>
+            <div class="breadcrumb">
+              <button type="button" class="btn-link" data-goto="recent">← Statements</button>
+              <span class="sep">/</span>
+              <span>All history</span>
+            </div>
+            <h1>Statement history</h1>
+            <p>Every persisted statement in the Vault — filter by account, browse by year.</p>
+          </div>
+          <span class="count-pill" id="history-count">—</span>
+        </div>
+        <div class="content">
+          <section class="card" aria-label="Full statement history">
+            <div class="card-head">
+              <div>
+                <h2>All statements</h2>
+                <p>Same Open action as Recent — jumps to that period’s transactions.</p>
+              </div>
+            </div>
+            <div class="filters">
+              <div class="field">
+                <label for="account-filter">Account</label>
+                <select id="account-filter" class="select">
+                  <option value="all">All accounts</option>
+                  <option value="schwab">Charles Schwab Bank · checking · *4821</option>
+                  <option value="chase">SYNTHETIC Chase · credit card · *0000</option>
+                  <option value="vanguard">SYNTHETIC Vanguard · brokerage · *9912</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="year-filter">Year</label>
+                <select id="year-filter" class="select">
+                  <option value="all">All years</option>
+                  <option value="2026">2026</option>
+                  <option value="2025">2025</option>
+                  <option value="2024">2024</option>
+                </select>
+              </div>
+            </div>
+            <div class="marker">
+              <strong>List UX</strong>
+              Account filter + year groups (not a second infinite “Recent”).
+              Periods newest-first within each year. Empty filter → loud empty state, no silent blank table.
+            </div>
+            <div id="history-list"></div>
+          </section>
+        </div>
+      </div>
+
+      <!-- ========== 3 · Ledger drill-in ========== -->
+      <div id="screen-ledger" class="screen">
+        <div class="topbar">
+          <div>
+            <div class="breadcrumb">
+              <button type="button" class="btn-link" data-goto="history">← Statement history</button>
+              <span class="sep">/</span>
+              <span id="ledger-crumb">Ledger</span>
+            </div>
+            <h1>Vault Ledger</h1>
+            <p><span class="chip chip-pos">canonical_persisted</span> · Templated from Postgres (integer cents → USD)</p>
+          </div>
+        </div>
+        <div class="content">
+          <section class="card" aria-label="Statement ledger">
+            <div class="stmt-head">
+              <div class="avatar">S</div>
+              <div>
+                <h2 id="ledger-title">Charles Schwab Bank · Checking · *4821</h2>
+                <p class="sub period" id="ledger-period">2026-03-01 → 2026-03-31 · <span class="chip chip-neutral">liquid</span></p>
+              </div>
+            </div>
+            <div class="stmt-stats">
+              <div><div class="eyebrow">Opening</div><div class="v num">$12,450.00</div></div>
+              <div><div class="eyebrow">Net change</div><div class="v num pos">+$2,180.55</div></div>
+              <div><div class="eyebrow">Closing</div><div class="v num">$14,630.55</div></div>
+            </div>
+            <div class="marker" style="margin-top:16px">
+              <strong>Open unchanged</strong>
+              History reuses today’s statement Open → HTMX ledger fragment.
+              Back returns to All history (or Recent if opened from there).
+            </div>
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Category</th>
+                  <th>Description</th>
+                  <th class="amount">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="muted num">2026-03-05</td>
+                  <td><span class="chip chip-neutral">Deposit</span></td>
+                  <td>SYNTHETIC PAYROLL</td>
+                  <td class="amount num pos">+$3,200.00</td>
+                </tr>
+                <tr>
+                  <td class="muted num">2026-03-08</td>
+                  <td><span class="chip chip-neutral">Withdrawal</span></td>
+                  <td>SYNTHETIC RENT</td>
+                  <td class="amount num neg">−$1,850.00</td>
+                </tr>
+                <tr>
+                  <td class="muted num">2026-03-14</td>
+                  <td><span class="chip chip-neutral">Fee</span></td>
+                  <td>SYNTHETIC ATM FEE</td>
+                  <td class="amount num neg">−$3.50</td>
+                </tr>
+                <tr>
+                  <td class="muted num">2026-03-22</td>
+                  <td><span class="chip chip-neutral">Transfer</span></td>
+                  <td>SYNTHETIC BROKERAGE Sweep</td>
+                  <td class="amount num pos">+$834.05</td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* Synthetic statement history — fat-marker demo data only */
+    const STATEMENTS = [
+      { id: "s1", account: "schwab", institution: "Charles Schwab Bank", type: "Checking", mask: "*4821", start: "2026-03-01", end: "2026-03-31", year: "2026", txns: 42 },
+      { id: "s2", account: "schwab", institution: "Charles Schwab Bank", type: "Checking", mask: "*4821", start: "2026-02-01", end: "2026-02-28", year: "2026", txns: 38 },
+      { id: "s3", account: "schwab", institution: "Charles Schwab Bank", type: "Checking", mask: "*4821", start: "2026-01-01", end: "2026-01-31", year: "2026", txns: 41 },
+      { id: "s4", account: "schwab", institution: "Charles Schwab Bank", type: "Checking", mask: "*4821", start: "2025-12-01", end: "2025-12-31", year: "2025", txns: 45 },
+      { id: "s5", account: "schwab", institution: "Charles Schwab Bank", type: "Checking", mask: "*4821", start: "2025-11-01", end: "2025-11-30", year: "2025", txns: 36 },
+      { id: "s6", account: "schwab", institution: "Charles Schwab Bank", type: "Checking", mask: "*4821", start: "2025-10-01", end: "2025-10-31", year: "2025", txns: 40 },
+      { id: "s7", account: "schwab", institution: "Charles Schwab Bank", type: "Checking", mask: "*4821", start: "2025-09-01", end: "2025-09-30", year: "2025", txns: 33 },
+      { id: "s8", account: "schwab", institution: "Charles Schwab Bank", type: "Checking", mask: "*4821", start: "2025-08-01", end: "2025-08-31", year: "2025", txns: 39 },
+      { id: "s9", account: "schwab", institution: "Charles Schwab Bank", type: "Checking", mask: "*4821", start: "2025-07-01", end: "2025-07-31", year: "2025", txns: 37 },
+      { id: "s10", account: "schwab", institution: "Charles Schwab Bank", type: "Checking", mask: "*4821", start: "2025-06-01", end: "2025-06-30", year: "2025", txns: 44 },
+      { id: "s11", account: "schwab", institution: "Charles Schwab Bank", type: "Checking", mask: "*4821", start: "2025-05-01", end: "2025-05-31", year: "2025", txns: 35 },
+      { id: "s12", account: "schwab", institution: "Charles Schwab Bank", type: "Checking", mask: "*4821", start: "2024-12-01", end: "2024-12-31", year: "2024", txns: 29 },
+      { id: "c1", account: "chase", institution: "SYNTHETIC Chase", type: "Credit card", mask: "*0000", start: "2026-03-01", end: "2026-03-31", year: "2026", txns: 61 },
+      { id: "c2", account: "chase", institution: "SYNTHETIC Chase", type: "Credit card", mask: "*0000", start: "2026-02-01", end: "2026-02-28", year: "2026", txns: 54 },
+      { id: "c3", account: "chase", institution: "SYNTHETIC Chase", type: "Credit card", mask: "*0000", start: "2025-12-01", end: "2025-12-31", year: "2025", txns: 58 },
+      { id: "v1", account: "vanguard", institution: "SYNTHETIC Vanguard", type: "Brokerage", mask: "*9912", start: "2026-01-01", end: "2026-03-31", year: "2026", txns: 12 },
+      { id: "v2", account: "vanguard", institution: "SYNTHETIC Vanguard", type: "Brokerage", mask: "*9912", start: "2025-10-01", end: "2025-12-31", year: "2025", txns: 9 },
+    ];
+
+    const RECENT_LIMIT = 8;
+
+    function showScreen(id) {
+      document.querySelectorAll(".screen").forEach((s) => s.classList.remove("active"));
+      document.getElementById("screen-" + id).classList.add("active");
+      document.querySelectorAll(".tabs button").forEach((b) => {
+        b.setAttribute("aria-selected", b.getAttribute("data-screen") === id ? "true" : "false");
+      });
+      window.scrollTo(0, 0);
+    }
+
+    function openLedger(row) {
+      document.getElementById("ledger-title").textContent =
+        row.institution + " · " + row.type + " · " + row.mask;
+      document.getElementById("ledger-period").innerHTML =
+        row.start + " → " + row.end + ' · <span class="chip chip-neutral">liquid</span>';
+      document.getElementById("ledger-crumb").textContent = row.start + " → " + row.end;
+      showScreen("ledger");
+    }
+
+    function rowHtml(row) {
+      return (
+        "<tr>" +
+        '<td><span class="strong">' + row.institution + '</span>' +
+        '<span class="sub">' + row.type + " · " + row.mask + "</span></td>" +
+        '<td class="period muted">' + row.start + " → " + row.end + "</td>" +
+        '<td class="amount num">' + row.txns + "</td>" +
+        '<td class="amount"><button type="button" class="btn btn-ghost btn-sm" data-open="' +
+        row.id + '">Open</button></td>' +
+        "</tr>"
+      );
+    }
+
+    function renderRecent() {
+      const body = document.getElementById("recent-body");
+      body.innerHTML = STATEMENTS.slice(0, RECENT_LIMIT).map(rowHtml).join("");
+    }
+
+    function renderHistory() {
+      const account = document.getElementById("account-filter").value;
+      const year = document.getElementById("year-filter").value;
+      let rows = STATEMENTS.slice();
+      if (account !== "all") rows = rows.filter((r) => r.account === account);
+      if (year !== "all") rows = rows.filter((r) => r.year === year);
+
+      document.getElementById("history-count").textContent = rows.length + " statements";
+
+      const list = document.getElementById("history-list");
+      if (!rows.length) {
+        list.innerHTML =
+          '<p class="muted" style="padding:18px 22px 22px">No statements match this filter. Clear Account / Year or upload more PDFs.</p>';
+        return;
+      }
+
+      const byYear = {};
+      rows.forEach((r) => {
+        (byYear[r.year] = byYear[r.year] || []).push(r);
+      });
+      const years = Object.keys(byYear).sort((a, b) => b.localeCompare(a));
+
+      let html = "";
+      years.forEach((y) => {
+        html += '<div class="year-label">' + y + " · " + byYear[y].length + "</div>";
+        html += '<table class="table"><thead><tr>' +
+          "<th>Account</th><th class=\"period\">Period</th>" +
+          "<th class=\"amount\">Transactions</th><th></th>" +
+          "</tr></thead><tbody>";
+        html += byYear[y].map(rowHtml).join("");
+        html += "</tbody></table>";
+      });
+      list.innerHTML = html;
+    }
+
+    document.querySelectorAll(".tabs button").forEach((btn) => {
+      btn.addEventListener("click", () => showScreen(btn.getAttribute("data-screen")));
+    });
+    document.querySelectorAll("[data-goto]").forEach((btn) => {
+      btn.addEventListener("click", () => showScreen(btn.getAttribute("data-goto")));
+    });
+    document.getElementById("account-filter").addEventListener("change", renderHistory);
+    document.getElementById("year-filter").addEventListener("change", renderHistory);
+
+    document.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-open]");
+      if (!btn) return;
+      const row = STATEMENTS.find((r) => r.id === btn.getAttribute("data-open"));
+      if (row) openLedger(row);
+    });
+
+    renderRecent();
+    renderHistory();
+  </script>
+</body>
+</html>

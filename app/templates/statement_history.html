@@ -1,0 +1,98 @@
+<section class="view" id="statement-history" data-nav="statements">
+    <header class="page-head page-head-with-meta">
+        <div>
+            <div class="breadcrumb">
+                <button type="button" class="btn-link"
+                        hx-get="/api/v1/dashboard/statements"
+                        hx-target="#pane-vault-body"
+                        hx-swap="innerHTML">&larr; Statements</button>
+                <span class="sep">/</span>
+                <span>All history</span>
+            </div>
+            <h1>Statement history</h1>
+            <p>Every persisted statement in the Vault &mdash; filter by account, browse by year.</p>
+        </div>
+        <span class="count-pill" id="history-count">
+            {% if total_count == 1 %}1 statement{% else %}{{ total_count }} statements{% endif %}
+        </span>
+    </header>
+
+    <div class="card" aria-label="Full statement history">
+        <div class="card-head">
+            <div>
+                <h2>All statements</h2>
+                <p>Same Open action as Recent &mdash; jumps to that period&rsquo;s transactions.</p>
+            </div>
+        </div>
+        <div class="filters" id="history-filters">
+            <div class="field">
+                <label for="account-filter">Account</label>
+                <select id="account-filter" name="account" class="select"
+                        hx-get="/api/v1/dashboard/statements/history"
+                        hx-target="#pane-vault-body"
+                        hx-swap="innerHTML"
+                        hx-include="#year-filter">
+                    <option value="all"{% if selected_account == "all" %} selected{% endif %}>All accounts</option>
+                    {% for opt in account_options %}
+                    <option value="{{ opt.account_id }}"{% if selected_account == opt.account_id %} selected{% endif %}>{{ opt.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="field">
+                <label for="year-filter">Year</label>
+                <select id="year-filter" name="year" class="select"
+                        hx-get="/api/v1/dashboard/statements/history"
+                        hx-target="#pane-vault-body"
+                        hx-swap="innerHTML"
+                        hx-include="#account-filter">
+                    <option value="all"{% if selected_year == "all" %} selected{% endif %}>All years</option>
+                    {% for yr in year_options %}
+                    <option value="{{ yr }}"{% if selected_year == yr|string %} selected{% endif %}>{{ yr }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        {% if year_groups %}
+        <div id="history-list">
+            {% for group in year_groups %}
+            <div class="year-label">{{ group.year }} &middot; {{ group.count }}</div>
+            <div class="card-flush table-scroll">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Account</th>
+                            <th class="period">Period</th>
+                            <th class="amount">Transactions</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in group.statements %}
+                        <tr>
+                            <td>
+                                <span class="strong">{{ row.institution }}</span>
+                                <span class="sub">{{ row.account_type | human_label }} &middot; {{ row.account_mask }}</span>
+                            </td>
+                            <td class="period muted">{{ row.start_date }} &rarr; {{ row.end_date }}</td>
+                            <td class="amount num">{{ row.transaction_count }}</td>
+                            <td class="amount">
+                                <button type="button" class="btn btn-ghost btn-sm"
+                                        hx-get="/api/v1/dashboard/statements/{{ row.statement_id }}?from=history"
+                                        hx-target="#pane-vault-body"
+                                        hx-swap="innerHTML">Open</button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endfor %}
+        </div>
+        {% elif has_any_statements %}
+        <p class="empty-inline" id="history-empty">No statements match this filter. Clear Account / Year or upload more PDFs.</p>
+        {% else %}
+        <p class="empty-inline" id="history-empty">No statements yet &mdash; upload PDFs from Statements first.</p>
+        {% endif %}
+    </div>
+</section>
