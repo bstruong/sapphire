@@ -417,8 +417,9 @@ def persist_canonical_statement(
         txn_query = """
         INSERT INTO transactions (
             transaction_id, statement_id, post_date, transaction_date,
-            amount_cents, description, transaction_category, balance_after_cents
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
+            amount_cents, description, transaction_category, balance_after_cents,
+            payee
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s);
         """
         for txn in transactions:
             cur.execute(
@@ -432,6 +433,7 @@ def persist_canonical_statement(
                     txn.description,
                     txn.transaction_category.value,
                     txn.balance_after_cents,
+                    txn.payee,
                 ),
             )
 
@@ -799,7 +801,8 @@ def get_canonical_statement(
         cur.execute(
             """
             SELECT transaction_id, statement_id, post_date, transaction_date,
-                   amount_cents, description, transaction_category, balance_after_cents
+                   amount_cents, description, transaction_category, balance_after_cents,
+                   payee
             FROM transactions
             WHERE statement_id = %s
             ORDER BY post_date ASC;
@@ -817,6 +820,7 @@ def get_canonical_statement(
                 description=str(t[5]),
                 transaction_category=TransactionCategory(str(t[6])),
                 balance_after_cents=int(t[7]) if t[7] is not None else None,
+                payee=str(t[8]) if t[8] is not None else None,
             )
             for t in txn_rows
         ]

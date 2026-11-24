@@ -205,6 +205,8 @@ class VanguardAdapter(InvestmentStatementAdapter):
             amount_cents = parse_currency_to_cents(raw_amount)
             validate_category_for_domain(self.account_domain, category)
             validate_category_sign(self.account_domain, category, amount_cents)
+            from app.adapters.payee import payee_from_description
+
             transactions.append(
                 CanonicalTransaction(
                     statement_id=statement_id,
@@ -212,6 +214,7 @@ class VanguardAdapter(InvestmentStatementAdapter):
                     amount_cents=amount_cents,
                     description=raw_activity,
                     transaction_category=category,
+                    payee=payee_from_description(raw_activity),
                 )
             )
 

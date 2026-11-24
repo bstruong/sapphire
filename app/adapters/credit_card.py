@@ -323,6 +323,8 @@ class StandardCreditCardAdapter(CreditCardStatementAdapter):
             validate_category_for_domain(self.account_domain, category)
             validate_category_sign(self.account_domain, category, amount_cents)
 
+            from app.adapters.payee import payee_from_description
+
             txns.append(
                 CanonicalTransaction(
                     statement_id=statement_id,
@@ -330,6 +332,7 @@ class StandardCreditCardAdapter(CreditCardStatementAdapter):
                     amount_cents=amount_cents,
                     description=raw_desc,
                     transaction_category=category,
+                    payee=payee_from_description(raw_desc),
                 )
             )
 

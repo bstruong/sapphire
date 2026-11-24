@@ -205,6 +205,10 @@ class TestSchwabCheckingParse:
         assert summary.fees_cents == 0
         assert len(txns) == 15
         assert sum(t.amount_cents for t in txns) == statement.net_change_cents
+        # Opaque bank-type descriptions → no invented payee.
+        assert all(t.payee is None for t in txns)
+        opaque = {t.description for t in txns}
+        assert "Electronic Withdrawal" in opaque
 
     def test_unmatched_bank_fails_registry(self, tmp_path: Path) -> None:
         pdf = _render_lines(

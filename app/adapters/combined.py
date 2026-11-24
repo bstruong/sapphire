@@ -411,6 +411,8 @@ class StandardCombinedDepositoryAdapter(CombinedStatementAdapter):
             validate_category_for_domain(AccountDomain.DEPOSITORY, category)
             validate_category_sign(AccountDomain.DEPOSITORY, category, amt_cents)
 
+            from app.adapters.payee import payee_from_description
+
             transactions.append(
                 CanonicalTransaction(
                     statement_id=statement_id,
@@ -419,6 +421,7 @@ class StandardCombinedDepositoryAdapter(CombinedStatementAdapter):
                     amount_cents=amt_cents,
                     balance_after_cents=bal_after_cents,
                     transaction_category=category,
+                    payee=payee_from_description(desc),
                 )
             )
 
