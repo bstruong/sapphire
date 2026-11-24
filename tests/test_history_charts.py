@@ -22,7 +22,8 @@ def _truncate(postgres_url: str) -> None:
     with psycopg.connect(postgres_url) as conn:
         conn.execute(
             """
-            TRUNCATE TABLE envelopes, raw_tokens, raw_pages, transactions, holdings,
+            TRUNCATE TABLE transaction_spend_labels, envelopes, raw_tokens, raw_pages,
+                           transactions, holdings,
                            statement_depository_summaries, statement_credit_summaries,
                            statement_brokerage_summaries, statements, accounts,
                            extraction_runs, raw_payloads CASCADE;

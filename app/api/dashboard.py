@@ -32,8 +32,10 @@ from app.budget.envelopes import (
 from app.db.connection import get_db_connection
 from app.db.history import (
     list_account_balance_series,
+    list_available_spend_months,
     list_category_month_totals,
     list_liquid_closing_by_period,
+    list_spend_category_month_totals,
 )
 from app.db.repository import (
     get_canonical_statement,
@@ -57,6 +59,7 @@ from app.pipeline.ingest_service import (
 from app.presentation.history_charts import (
     render_balance_history_svg,
     render_category_history_svg,
+    render_spend_category_pie_svg,
 )
 from app.presentation.label_format import format_snake_label
 from app.presentation.liquidity import (
@@ -137,12 +140,47 @@ def _sum_closing_for_liquidity(
     return total
 
 
-def _overview_history_context() -> dict[str, Any]:
+def _parse_pie_year_month(
+    *,
+    year: int | None,
+    month: int | None,
+    available: list[str],
+) -> tuple[int, int] | None:
+    """Resolve pie calendar month; default to latest available spend month."""
+    if year is not None or month is not None:
+        if year is None or month is None:
+            raise TokenError("PIE_MONTH_INCOMPLETE: year and month are both required")
+        if type(year) is not int or type(month) is not int:
+            raise TokenError("PIE_MONTH_INVALID: year and month must be int")
+        if month < 1 or month > 12:
+            raise TokenError("PIE_MONTH_INVALID: month must be 1..12")
+        return year, month
+    if not available:
+        return None
+    latest = available[-1]
+    y_str, m_str = latest.split("-", 1)
+    return int(y_str), int(m_str)
+
+
+def _overview_history_context(
+    *,
+    pie_year: int | None = None,
+    pie_month: int | None = None,
+) -> dict[str, Any]:
     """Build History section context (SVGs or loud empty codes)."""
     with get_db_connection() as conn:
         liquid_series = list_liquid_closing_by_period(conn)
         account_series = list_account_balance_series(conn)
         category_months = list_category_month_totals(conn)
+        available_months = list_available_spend_months(conn)
+        selected = _parse_pie_year_month(
+            year=pie_year, month=pie_month, available=available_months
+        )
+        pie_slices = (
+            list_spend_category_month_totals(conn, year=selected[0], month=selected[1])
+            if selected is not None
+            else []
+        )
 
     balance_svg: str | None = None
     balance_empty_code: str | None = None
@@ -160,6 +198,70 @@ def _overview_history_context() -> dict[str, Any]:
     else:
         category_empty_code = "HISTORY_CATEGORY_EMPTY"
 
+    pie_svg: str | None = None
+    pie_empty_code: str | None = None
+    pie_legend: list[dict[str, Any]] = []
+    pie_total_cents = 0
+    pie_label = ""
+    pie_year_out: int | None = None
+    pie_month_out: int | None = None
+    if selected is None:
+        pie_empty_code = "HISTORY_SPEND_CATEGORY_EMPTY"
+    elif not pie_slices:
+        pie_year_out, pie_month_out = selected
+        pie_empty_code = "HISTORY_SPEND_CATEGORY_EMPTY"
+        pie_label = f"{pie_year_out:04d}-{pie_month_out:02d}"
+    else:
+        pie_year_out, pie_month_out = selected
+        pie_svg = render_spend_category_pie_svg(
+            pie_slices, year=pie_year_out, month=pie_month_out
+        )
+        pie_total_cents = sum(s.spend_cents for s in pie_slices)
+        month_names = (
+            "January",
+            "February",
+            "March",
+            "April",
+            "May",
+            "June",
+            "July",
+            "August",
+            "September",
+            "October",
+            "November",
+            "December",
+        )
+        pie_label = f"{month_names[pie_month_out - 1]} {pie_year_out}"
+        for slice_ in pie_slices:
+            pct = slice_.spend_cents * 100 // pie_total_cents if pie_total_cents else 0
+            pie_legend.append(
+                {
+                    "slug": slice_.slug,
+                    "name": slice_.display_name,
+                    "cents": slice_.spend_cents,
+                    "usd": format_usd_cents(slice_.spend_cents),
+                    "pct": pct,
+                    "color": slice_.color,
+                    "uncategorized": slice_.slug == "uncategorized",
+                }
+            )
+
+    # Prev/next month keys among available spend months.
+    pie_prev: str | None = None
+    pie_next: str | None = None
+    if selected is not None and available_months:
+        key = f"{selected[0]:04d}-{selected[1]:02d}"
+        if key in available_months:
+            idx = available_months.index(key)
+            if idx > 0:
+                pie_prev = available_months[idx - 1]
+            if idx < len(available_months) - 1:
+                pie_next = available_months[idx + 1]
+
+    available_set = set(available_months)
+    year_min = int(available_months[0][:4]) if available_months else None
+    year_max = int(available_months[-1][:4]) if available_months else None
+
     logger.info(
         "Dashboard overview history prepared",
         extra={
@@ -167,6 +269,8 @@ def _overview_history_context() -> dict[str, Any]:
             "category_months": len(category_months),
             "balance_ready": balance_svg is not None,
             "category_ready": category_svg is not None,
+            "pie_ready": pie_svg is not None,
+            "pie_months": len(available_months),
         },
     )
     return {
@@ -177,16 +281,47 @@ def _overview_history_context() -> dict[str, Any]:
         "account_series_labels": [
             f"{s.institution} {s.account_mask}" for s in account_series
         ],
+        "pie_svg": pie_svg,
+        "pie_empty_code": pie_empty_code,
+        "pie_legend": pie_legend,
+        "pie_total_cents": pie_total_cents,
+        "pie_total_usd": format_usd_cents(pie_total_cents) if pie_total_cents else "",
+        "pie_label": pie_label,
+        "pie_year": pie_year_out,
+        "pie_month": pie_month_out,
+        "pie_prev": pie_prev,
+        "pie_next": pie_next,
+        "pie_available_months": available_months,
+        "pie_available_set": available_set,
+        "pie_year_min": year_min,
+        "pie_year_max": year_max,
     }
 
 
-def _render_overview_html() -> str:
+def _render_overview_html(
+    *,
+    pie_year: int | None = None,
+    pie_month: int | None = None,
+) -> str:
     """Templated account overview or empty state (never fake zero portfolio)."""
     try:
         accounts = _overview_accounts()
         with get_db_connection() as conn:
             available = ready_to_assign_cents(conn)
-        history = _overview_history_context() if accounts else None
+        history = (
+            _overview_history_context(pie_year=pie_year, pie_month=pie_month)
+            if accounts
+            else None
+        )
+    except TokenError as exc:
+        logger.warning(
+            "Dashboard overview rejected pie month",
+            extra={"error_type": type(exc).__name__},
+        )
+        return env.get_template("upload_error.html").render(
+            error_code="PIE_MONTH_INVALID",
+            detail=str(exc),
+        )
     except Exception as exc:  # noqa: BLE001
         logger.error(
             "Dashboard overview query failed",
@@ -515,7 +650,11 @@ def serve_dashboard() -> HTMLResponse:
     response_class=HTMLResponse,
     responses={400: {"description": "Requires HTMX or overview query failed"}},
 )
-async def get_account_overview(request: Request) -> HTMLResponse:
+async def get_account_overview(
+    request: Request,
+    pie_year: int | None = None,
+    pie_month: int | None = None,
+) -> HTMLResponse:
     """Return the account overview HTML fragment for Pane 2."""
     hx_request = request.headers.get("HX-Request", "").lower()
     if hx_request != "true":
@@ -523,10 +662,10 @@ async def get_account_overview(request: Request) -> HTMLResponse:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="This endpoint requires an HTMX request (HX-Request: true).",
         )
-    html = _render_overview_html()
+    html = _render_overview_html(pie_year=pie_year, pie_month=pie_month)
     status_code = (
         status.HTTP_400_BAD_REQUEST
-        if "OVERVIEW_QUERY_FAILED" in html
+        if ("OVERVIEW_QUERY_FAILED" in html or "PIE_MONTH_INVALID" in html)
         else status.HTTP_200_OK
     )
     return HTMLResponse(content=html, status_code=status_code)

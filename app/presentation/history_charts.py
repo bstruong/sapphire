@@ -12,7 +12,9 @@ from app.db.history import (
     AccountBalanceSeries,
     CategoryMonthBucket,
     LiquidBalanceSeries,
+    SpendCategorySlice,
 )
+from app.presentation.money_format import format_usd_cents
 
 _VIEW_W = 320
 _VIEW_H = 100
@@ -200,5 +202,85 @@ def render_category_history_svg(months: list[CategoryMonthBucket]) -> str:
             f'text-anchor="middle">{escape(label)}</text>'
         )
 
+    parts.append("</svg>")
+    return "".join(parts)
+
+
+_PIE_CIRC = 314  # integer circumference units for donut stroke-dasharray
+_PIE_R = 42
+
+
+def render_spend_category_pie_svg(
+    slices: tuple[SpendCategorySlice, ...] | list[SpendCategorySlice],
+    *,
+    year: int,
+    month: int,
+) -> str:
+    """Donut SVG for spend-by-category totals (integer-cent arcs)."""
+    if not slices:
+        raise ValueError("spend category pie SVG requires non-empty slices")
+
+    totals = [_require_int_cents(s.spend_cents, "spend_cents") for s in slices]
+    if any(cents <= 0 for cents in totals):
+        raise ValueError("spend_cents must be strictly positive for pie slices")
+    total = sum(totals)
+    if total <= 0:
+        raise ValueError("pie total spend_cents must be positive")
+
+    # Largest-remainder so arc units sum exactly to _PIE_CIRC.
+    raw = [cents * _PIE_CIRC // total for cents in totals]
+    remainder = _PIE_CIRC - sum(raw)
+    order = sorted(
+        range(len(totals)),
+        key=lambda i: (totals[i] * _PIE_CIRC) % total,
+        reverse=True,
+    )
+    arcs = list(raw)
+    for i in range(remainder):
+        arcs[order[i % len(order)]] += 1
+
+    month_names = (
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+    )
+    if month < 1 or month > 12:
+        raise ValueError(f"month must be 1..12, got {month}")
+    title = f"Spend by category · {month_names[month - 1]} {year}"
+    center_total = format_usd_cents(total)
+
+    parts: list[str] = [
+        (
+            '<svg class="pie-svg" viewBox="0 0 120 120" role="img" '
+            f'aria-label="{escape(title)}">'
+        ),
+        '<g transform="translate(60,60) rotate(-90)">',
+    ]
+    offset = 0
+    for slice_, arc in zip(slices, arcs, strict=True):
+        if arc <= 0:
+            continue
+        gap = _PIE_CIRC - arc
+        color = escape(slice_.color)
+        parts.append(
+            f'<circle r="{_PIE_R}" fill="none" stroke="{color}" stroke-width="22" '
+            f'stroke-dasharray="{arc} {gap}" stroke-dashoffset="{-offset}" />'
+        )
+        offset += arc
+    parts.append("</g>")
+    parts.append('<circle cx="60" cy="60" r="28" fill="var(--surface-2)" />')
+    parts.append('<text class="pie-center-label" x="60" y="57">Total spend</text>')
+    parts.append(
+        f'<text class="pie-center-sub" x="60" y="70">{escape(center_total)}</text>'
+    )
     parts.append("</svg>")
     return "".join(parts)

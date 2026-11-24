@@ -1,9 +1,9 @@
-{# Shared Overview History block (balances + category income/spend). #}
+{# Shared Overview History block (balances + category income/spend + spend pie). #}
 <div class="card" id="overview-history">
     <div class="card-head">
         <div>
             <h2>History</h2>
-            <p>Closing balances over statement periods and category income vs spend by month.</p>
+            <p>Closing balances, pipeline income vs spend, and spend by merchant category (month).</p>
         </div>
         <span class="chip chip-neutral">Vault series</span>
     </div>
@@ -51,4 +51,174 @@
         </div>
         {% endif %}
     </div>
+
+    <div class="history-block" id="spend-by-category">
+        <div class="eyebrow">Spend by category (month)</div>
+        <div class="pie-toolbar">
+            <div class="pie-period">
+                <div class="month-picker">
+                    <button type="button" class="month-picker-trigger" id="pie-cal-trigger"
+                            aria-haspopup="dialog" aria-expanded="false" aria-controls="pie-cal-panel"
+                            {% if not history.pie_year %}disabled{% endif %}>
+                        <span class="cal-icon" aria-hidden="true"><svg class="icon"><use href="#i-cal"/></svg></span>
+                        <span class="month-picker-copy">
+                            <span class="primary" id="pie-month-label">{% if history.pie_label %}{{ history.pie_label }}{% else %}No spend months{% endif %}</span>
+                            <span class="hint">Jump month / year · statement history</span>
+                        </span>
+                    </button>
+                    <div class="month-picker-panel" id="pie-cal-panel" role="dialog" aria-label="Pick calendar month"
+                         data-year="{{ history.pie_year or history.pie_year_max or '' }}"
+                         data-year-min="{{ history.pie_year_min or '' }}"
+                         data-year-max="{{ history.pie_year_max or '' }}"
+                         data-available="{{ history.pie_available_months | join(',') }}">
+                        <div class="cal-year-row">
+                            <button type="button" class="cal-year-btn" id="pie-cal-year-prev" aria-label="Previous year">
+                                <svg class="icon"><use href="#i-back"/></svg>
+                            </button>
+                            <div class="cal-year-label" id="pie-cal-year">{{ history.pie_year or history.pie_year_max or '' }}</div>
+                            <button type="button" class="cal-year-btn" id="pie-cal-year-next" aria-label="Next year">
+                                <svg class="icon"><use href="#i-chev"/></svg>
+                            </button>
+                        </div>
+                        <div class="cal-month-grid" id="pie-cal-grid" role="listbox" aria-label="Months"></div>
+                        <p class="cal-footnote">Months with Vault spend data are enabled.</p>
+                    </div>
+                </div>
+                <div class="month-step" role="group" aria-label="Step one month">
+                    {% if history.pie_prev %}
+                    <button type="button" class="month-step-btn" aria-label="Previous month"
+                            hx-get="/api/v1/dashboard/overview?pie_year={{ history.pie_prev[:4] }}&pie_month={{ history.pie_prev[5:7] }}"
+                            hx-target="#pane-vault-body" hx-swap="innerHTML">
+                        <svg class="icon"><use href="#i-back"/></svg>
+                    </button>
+                    {% else %}
+                    <button type="button" class="month-step-btn" aria-label="Previous month" disabled>
+                        <svg class="icon"><use href="#i-back"/></svg>
+                    </button>
+                    {% endif %}
+                    <span class="month-step-label">Step</span>
+                    {% if history.pie_next %}
+                    <button type="button" class="month-step-btn" aria-label="Next month"
+                            hx-get="/api/v1/dashboard/overview?pie_year={{ history.pie_next[:4] }}&pie_month={{ history.pie_next[5:7] }}"
+                            hx-target="#pane-vault-body" hx-swap="innerHTML">
+                        <svg class="icon"><use href="#i-chev"/></svg>
+                    </button>
+                    {% else %}
+                    <button type="button" class="month-step-btn" aria-label="Next month" disabled>
+                        <svg class="icon"><use href="#i-chev"/></svg>
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+            <span class="chip chip-accent">Calendar primary</span>
+        </div>
+
+        {% if history.pie_svg %}
+        <div class="history-chart-wrap" aria-label="Spend by category pie">
+            <div class="pie-layout">
+                {{ history.pie_svg | safe }}
+                <div>
+                    <ul class="pie-legend" aria-label="Category totals (integer cents)">
+                        {% for row in history.pie_legend %}
+                        <li{% if row.uncategorized %} class="uncat"{% endif %}>
+                            <span class="swatch swatch-pie-{{ row.slug }}"></span>
+                            <span class="name">{{ row.name }}</span>
+                            <span class="pct num">{{ row.pct }}%</span>
+                            <span class="cents num">{{ row.usd }}</span>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    <div class="pie-total">
+                        <span>SUM abs(spend) · labeled + Uncategorized</span>
+                        <span class="num">{{ history.pie_total_usd }} · {{ history.pie_total_cents }}¢</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="alert" role="alert">
+            <svg class="icon"><use href="#i-alert"/></svg>
+            <div>
+                <h4>No spend in this month</h4>
+                <p><code>{{ history.pie_empty_code }}</code> — no outflow (<code>amount_cents &lt; 0</code>){% if history.pie_label %} in {{ history.pie_label }}{% endif %}. Pick another month or ingest statements with spend rows.</p>
+            </div>
+        </div>
+        {% endif %}
+    </div>
 </div>
+<script>
+(function () {
+  var MONTH_SHORT = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  var panel = document.getElementById("pie-cal-panel");
+  var trigger = document.getElementById("pie-cal-trigger");
+  var yearLabel = document.getElementById("pie-cal-year");
+  var yearPrev = document.getElementById("pie-cal-year-prev");
+  var yearNext = document.getElementById("pie-cal-year-next");
+  var grid = document.getElementById("pie-cal-grid");
+  if (!panel || !trigger || !grid) { return; }
+  var available = {};
+  (panel.getAttribute("data-available") || "").split(",").forEach(function (k) {
+    if (k) { available[k] = true; }
+  });
+  var yearMin = parseInt(panel.getAttribute("data-year-min") || "0", 10);
+  var yearMax = parseInt(panel.getAttribute("data-year-max") || "0", 10);
+  var viewYear = parseInt(panel.getAttribute("data-year") || String(yearMax || 0), 10);
+  function keyFor(y, m) {
+    return y + "-" + String(m).padStart(2, "0");
+  }
+  function setOpen(open) {
+    panel.classList.toggle("is-open", open);
+    trigger.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open) { renderCalendar(); }
+  }
+  function renderCalendar() {
+    if (!viewYear) { return; }
+    yearLabel.textContent = String(viewYear);
+    yearPrev.disabled = !yearMin || viewYear <= yearMin;
+    yearNext.disabled = !yearMax || viewYear >= yearMax;
+    grid.innerHTML = "";
+    for (var m = 1; m <= 12; m += 1) {
+      var btn = document.createElement("button");
+      var k = keyFor(viewYear, m);
+      btn.type = "button";
+      btn.setAttribute("class", "cal-month-btn");
+      btn.setAttribute("role", "option");
+      btn.textContent = MONTH_SHORT[m - 1];
+      btn.disabled = !available[k];
+      if (panel.getAttribute("data-year") === String(viewYear) &&
+          {{ history.pie_month or 0 }} === m) {
+        btn.setAttribute("aria-current", "true");
+      }
+      btn.addEventListener("click", (function (monthNum) {
+        return function () {
+          setOpen(false);
+          if (window.htmx) {
+            htmx.ajax("GET",
+              "/api/v1/dashboard/overview?pie_year=" + viewYear + "&pie_month=" + monthNum,
+              {target: "#pane-vault-body", swap: "innerHTML"});
+          }
+        };
+      })(m));
+      grid.appendChild(btn);
+    }
+  }
+  trigger.addEventListener("click", function () {
+    if (trigger.disabled) { return; }
+    setOpen(!panel.classList.contains("is-open"));
+  });
+  yearPrev.addEventListener("click", function () {
+    if (viewYear > yearMin) { viewYear -= 1; renderCalendar(); }
+  });
+  yearNext.addEventListener("click", function () {
+    if (viewYear < yearMax) { viewYear += 1; renderCalendar(); }
+  });
+  document.addEventListener("click", function (event) {
+    if (!panel.classList.contains("is-open")) { return; }
+    if (panel.contains(event.target) || trigger.contains(event.target)) { return; }
+    setOpen(false);
+  });
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape") { setOpen(false); }
+  });
+})();
+</script>

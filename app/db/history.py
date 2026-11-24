@@ -90,6 +90,45 @@ class CategoryMonthBucket:
     spend_cents: int
 
 
+@dataclass(frozen=True)
+class SpendCategorySlice:
+    """One merchant/budget spend slice for the Overview pie (integer cents)."""
+
+    slug: str
+    display_name: str
+    spend_cents: int
+    color: str
+
+
+# Stable palette aligned with the locked wireframe (Vault dark).
+_SPEND_PIE_COLORS: dict[str, str] = {
+    "rent": "#6f8cff",
+    "groceries": "#3ddc97",
+    "dining": "#f5b84a",
+    "utilities": "#9aafff",
+    "transport": "#c084fc",
+    "transfer": "#5eead4",
+    "other": "#fb7185",
+    "uncategorized": "#68758d",
+}
+_SPEND_PIE_FALLBACK_COLORS: tuple[str, ...] = (
+    "#6f8cff",
+    "#3ddc97",
+    "#f5b84a",
+    "#9aafff",
+    "#c084fc",
+    "#5eead4",
+    "#fb7185",
+    "#68758d",
+)
+
+
+def _color_for_spend_slug(slug: str, index: int) -> str:
+    if slug in _SPEND_PIE_COLORS:
+        return _SPEND_PIE_COLORS[slug]
+    return _SPEND_PIE_FALLBACK_COLORS[index % len(_SPEND_PIE_FALLBACK_COLORS)]
+
+
 def bucket_for_category(category: str | TransactionCategory) -> str:
     """Return ``income``, ``spend``, or ``exclude`` for a pipeline category.
 
@@ -265,3 +304,89 @@ def list_category_month_totals(
         extra={"month_count": len(months)},
     )
     return months
+
+
+def _month_bounds(year: int, month: int) -> tuple[date, date]:
+    if type(year) is not int or type(month) is not int:
+        raise TypeError("year and month must be int")
+    if month < 1 or month > 12:
+        raise ValueError(f"month must be 1..12, got {month}")
+    start = date(year, month, 1)
+    if month == 12:
+        end = date(year + 1, 1, 1)
+    else:
+        end = date(year, month + 1, 1)
+    return start, end
+
+
+def list_available_spend_months(conn: psycopg.Connection) -> list[str]:
+    """Calendar months (YYYY-MM) that have at least one outflow row."""
+    query = """
+    SELECT DISTINCT to_char(t.post_date, 'YYYY-MM') AS year_month
+    FROM transactions t
+    WHERE t.amount_cents < 0
+    ORDER BY year_month ASC;
+    """
+    with conn.cursor() as cur:
+        cur.execute(query)
+        months = [str(row[0]) for row in cur.fetchall()]
+    logger.info(
+        "Loaded available spend months",
+        extra={"month_count": len(months)},
+    )
+    return months
+
+
+def list_spend_category_month_totals(
+    conn: psycopg.Connection,
+    *,
+    year: int,
+    month: int,
+) -> list[SpendCategorySlice]:
+    """Absolute outflow cents by spend_category for one calendar month.
+
+    Unlabeled spend aggregates under slug ``uncategorized``. Income
+    (``amount_cents > 0``) is excluded. Empty result means no outflow in range.
+    """
+    start, end = _month_bounds(year, month)
+    query = """
+    SELECT COALESCE(c.slug, 'uncategorized') AS slug,
+           COALESCE(c.display_name, 'Uncategorized') AS display_name,
+           SUM(ABS(t.amount_cents))::bigint AS spend_cents
+    FROM transactions t
+    LEFT JOIN transaction_spend_labels l
+      ON l.transaction_id = t.transaction_id
+    LEFT JOIN spend_categories c
+      ON c.spend_category_id = l.spend_category_id
+    WHERE t.amount_cents < 0
+      AND t.post_date >= %s
+      AND t.post_date < %s
+    GROUP BY COALESCE(c.slug, 'uncategorized'),
+             COALESCE(c.display_name, 'Uncategorized')
+    ORDER BY spend_cents DESC, slug ASC;
+    """
+    slices: list[SpendCategorySlice] = []
+    with conn.cursor() as cur:
+        cur.execute(query, (start, end))
+        for index, row in enumerate(cur.fetchall()):
+            spend = int(row[2])
+            if type(spend) is not int:
+                raise PersistenceError(
+                    f"spend_cents must be int, got {type(spend).__name__}"
+                )
+            if spend <= 0:
+                raise PersistenceError(f"spend_cents must be positive, got {spend}")
+            slug = str(row[0])
+            slices.append(
+                SpendCategorySlice(
+                    slug=slug,
+                    display_name=str(row[1]),
+                    spend_cents=spend,
+                    color=_color_for_spend_slug(slug, index),
+                )
+            )
+    logger.info(
+        "Loaded spend category pie slices",
+        extra={"year": year, "month": month, "slice_count": len(slices)},
+    )
+    return slices
