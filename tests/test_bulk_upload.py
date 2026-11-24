@@ -149,6 +149,9 @@ class TestDashboardBulkUpload:
         assert "chase.pdf" in response.text
         assert "schwab.pdf" in response.text
         assert response.text.count(">OK<") >= 2 or "status-ok" in response.text
+        # Successful bulk upload refreshes Overview History in the same HTMX pane.
+        assert "View Overview" in response.text
+        assert 'id="overview-history"' in response.text
 
     def test_mixed_batch_partial_success(
         self, client: TestClient, tmp_path: Path
@@ -168,6 +171,8 @@ class TestDashboardBulkUpload:
         assert "Uploaded 1 of 2" in response.text
         assert "ADAPTER_MATCH_FAILED" in response.text
         assert "FAIL" in response.text
+        assert "View Overview" in response.text
+        assert 'id="overview-history"' in response.text
 
     def test_single_file_still_returns_ledger(
         self, client: TestClient, tmp_path: Path

@@ -707,11 +707,32 @@ def _render_batch_result_html(results: list[BatchItemResult]) -> str:
         }
         for item in results
     ]
+    # After a successful ingest, re-query History so the bulk result pane shows
+    # updated balance/category charts without a full page reload (HTMX swap).
+    history: dict[str, Any] | None = None
+    history_error_code: str | None = None
+    history_error_detail: str | None = None
+    if succeeded > 0:
+        try:
+            if _overview_accounts():
+                history = _overview_history_context()
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "Dashboard bulk upload history refresh failed",
+                extra={"error_type": type(exc).__name__},
+            )
+            history_error_code = "HISTORY_REFRESH_FAILED"
+            history_error_detail = (
+                "Could not load Overview History after upload. Open Overview to retry."
+            )
     return env.get_template("upload_batch_result.html").render(
         succeeded=succeeded,
         failed=failed,
         total=len(results),
         results=rows,
+        history=history,
+        history_error_code=history_error_code,
+        history_error_detail=history_error_detail,
     )
 
 

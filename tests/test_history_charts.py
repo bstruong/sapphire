@@ -7,6 +7,7 @@ Wireframe: docs/specs/visuals/history_charts_wireframe.html
 from __future__ import annotations
 
 import datetime
+import json
 import uuid
 from pathlib import Path
 
@@ -516,6 +517,41 @@ class TestOverviewHistorySection:
         html = client.get("/api/v1/dashboard/overview", headers=HX).text
         assert "No persisted statements yet" in html
         assert 'id="overview-history"' not in html
+
+
+class TestBulkUploadRefreshesHistory:
+    """Successful bulk upload summary embeds live Overview History (no full reload)."""
+
+    def test_upload_summary_embeds_history_after_success(
+        self, client: TestClient, postgres_url: str
+    ) -> None:
+        with psycopg.connect(postgres_url) as conn:
+            _seed_multi_month(conn)
+        payload = {
+            "results": [
+                {
+                    "filename": "Bank Statement_2026-08-31_962.PDF",
+                    "ok": True,
+                    "statement_id": "11111111-1111-1111-1111-111111111111",
+                    "run_id": None,
+                    "error_code": None,
+                    "detail": None,
+                    "adapter_id": "schwab_checking",
+                }
+            ]
+        }
+        response = client.post(
+            "/api/v1/dashboard/upload-summary",
+            headers={**HX, "Content-Type": "application/json"},
+            content=json.dumps(payload),
+        )
+        assert response.status_code == 200
+        assert "Uploaded 1 of 1" in response.text
+        assert "View Overview" in response.text
+        assert 'id="overview-history"' in response.text
+        assert "history-line-liquid" in response.text
+        assert "history-bar-income" in response.text
+        assert "history-bar-spend" in response.text
 
 
 class TestSeedHistoryChartsScript:

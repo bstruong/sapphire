@@ -172,6 +172,41 @@ class TestStylesheet:
 
 
 class TestSeedSupportsDrillIn:
+    def test_seed_refuses_truncate_when_personal_accounts_present(
+        self, client: TestClient, postgres_url: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("DATABASE_URL", postgres_url)
+        try:
+            from scripts.seed_dashboard import seed
+        except ModuleNotFoundError:
+            pytest.skip("scripts/ missing (not a full repo checkout)")
+
+        import uuid
+
+        import psycopg
+
+        with psycopg.connect(postgres_url) as conn:
+            conn.execute(
+                """
+                INSERT INTO accounts (
+                    account_id, institution, account_mask, account_domain,
+                    account_type, currency
+                ) VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    uuid.uuid4(),
+                    "Charles Schwab Bank",
+                    "440033427962",
+                    "depository",
+                    "checking",
+                    "USD",
+                ),
+            )
+            conn.commit()
+        with pytest.raises(SystemExit, match="non-seed accounts"):
+            seed(force=False)
+        seed(force=True)  # explicit wipe still allowed for Manual UI QA
+
     def test_seed_script_sidecars_enable_statement_drill_in(
         self, client: TestClient, postgres_url: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
