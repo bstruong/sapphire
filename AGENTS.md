@@ -177,6 +177,7 @@ The prior Dual-Tier path (cloud orchestrator plans only; local `qwen36-coder` / 
 ## Troubleshooting & CI/CD Runbooks (For Future Agents)
 
 ### Mutation Testing (`mutmut`) Anomalies
+* **PR Test Coverage Gate speed (keep ≥90%):** Docs/non-code PRs use an always-green `Test Coverage Gate` aggregator so Postgres is **not** booted when `needs_tests` is false. App PRs still run the full suite with `--cov=app --cov-fail-under=90` via `pytest -n 2 --dist loadgroup` and per-worker DBs in `tests/conftest.py` (do **not** drop the coverage gate to chase wall clock).
 * **PR vs Watchtower mutation:** Mutation is **not** a PR required check. Failures belong to `Mutation Nightly` on `main` (`[self-hosted, watchtower]`). Do not re-add a blocking `mutation:` job to `ci.yml` or move it back to daily `ubuntu-latest` without an explicit product decision.
 * **Mutation Postgres circuit breaker:** Do **not** restore `jobs.mutation.services` Postgres on Watchtower. DinD fails extracting `postgres:15` (overlayfs whiteout EPERM). Mutation uses **host** Postgres on the Watchtower node (`podman` container `sapphire-mutation-pg` → `:54329` / `sapphire_test`). See `homelab-k3s` `manifests/watchtower/github-runner/README.md`.
 * **`no_tests` (🫥) is a hard fail:** Untested / dead code on allowlisted modules fails `--max-no-tests 0`. Delete dead helpers or add assertion-heavy tests. Do **not** "fix" this by mutating presentation code or faking stats.

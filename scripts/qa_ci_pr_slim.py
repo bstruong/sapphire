@@ -98,14 +98,28 @@ def test_path_aware_e2e_skip(ci: str) -> None:
         "--ignore=tests/test_e2e_dashboard.py" in ci and "needs_e2e != 'true'" in ci,
     )
     assert_condition(
-        "Docs/non-code path can skip pytest entirely",
-        "needs_tests != 'true'" in ci,
+        "Docs/non-code path waives required gate without Postgres",
+        "name: Test Coverage Gate" in ci
+        and "needs.changes.outputs.needs_tests" in ci
+        and ("coverage gate waived" in ci or "Skipping pytest + Postgres" in ci),
     )
     assert_condition(
         "UI-touching path keeps coverage gate including E2E",
         "needs_e2e == 'true'" in ci
         and "needs_tests == 'true'" in ci
         and "--cov-fail-under=90" in ci,
+    )
+    assert_condition(
+        "Pytest uses xdist without dropping ≥90% coverage",
+        "-n 2" in ci
+        and "--dist loadgroup" in ci
+        and ci.count("--cov-fail-under=90") >= 2
+        and "--cov=app" in ci,
+        "Parallel workers + per-worker DBs; coverage gate unchanged.",
+    )
+    assert_condition(
+        "Real pytest job is named Pytest + Coverage (Postgres lives there)",
+        "name: Pytest + Coverage" in ci and "image: postgres:15" in ci,
     )
 
 
