@@ -636,31 +636,35 @@ class TestExceptionHierarchy:
 
 
 def _all_positive_pairs() -> list[tuple[AccountDomain, TransactionCategory]]:
-    """Every (domain, category) pair where amount_cents must be > 0."""
-    pairs = []
-    for domain, cats in POSITIVE_DELTA_CATEGORIES.items():
-        for cat in cats:
+    """Every (domain, category) pair where amount_cents must be > 0.
+
+    Sorted for deterministic pytest-xdist collection (frozenset iteration order
+    is process-randomized and must match across workers).
+    """
+    pairs: list[tuple[AccountDomain, TransactionCategory]] = []
+    for domain in sorted(POSITIVE_DELTA_CATEGORIES, key=lambda d: d.value):
+        for cat in sorted(POSITIVE_DELTA_CATEGORIES[domain], key=lambda c: c.value):
             pairs.append((domain, cat))
     return pairs
 
 
 def _all_negative_pairs() -> list[tuple[AccountDomain, TransactionCategory]]:
     """Every (domain, category) pair where amount_cents must be < 0."""
-    pairs = []
-    for domain, cats in NEGATIVE_DELTA_CATEGORIES.items():
-        for cat in cats:
+    pairs: list[tuple[AccountDomain, TransactionCategory]] = []
+    for domain in sorted(NEGATIVE_DELTA_CATEGORIES, key=lambda d: d.value):
+        for cat in sorted(NEGATIVE_DELTA_CATEGORIES[domain], key=lambda c: c.value):
             pairs.append((domain, cat))
     return pairs
 
 
 def _all_either_pairs() -> list[tuple[AccountDomain, TransactionCategory]]:
     """Every (domain, category) pair where either sign is valid."""
-    pairs = []
-    for domain in AccountDomain:
+    pairs: list[tuple[AccountDomain, TransactionCategory]] = []
+    for domain in sorted(AccountDomain, key=lambda d: d.value):
         pos = POSITIVE_DELTA_CATEGORIES[domain]
         neg = NEGATIVE_DELTA_CATEGORIES[domain]
         either = DOMAIN_CATEGORIES[domain] - pos - neg
-        for cat in either:
+        for cat in sorted(either, key=lambda c: c.value):
             pairs.append((domain, cat))
     return pairs
 

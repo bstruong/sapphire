@@ -130,10 +130,11 @@ def test_docs_path_e2e_skip(ci: str) -> None:
         "dorny/paths-filter@v3" in ci and "needs_tests:" in ci and "needs_e2e:" in ci,
     )
     assert_condition(
-        "docs/non-UI path can skip E2E (and non-code can skip pytest)",
+        "docs/non-UI path can skip E2E (and non-code waives gate without Postgres)",
         "--ignore=tests/test_e2e_dashboard.py" in ci
         and "needs_e2e != 'true'" in ci
-        and "needs_tests != 'true'" in ci,
+        and "name: Test Coverage Gate" in ci
+        and "needs.changes.outputs.needs_tests" in ci,
     )
 
 

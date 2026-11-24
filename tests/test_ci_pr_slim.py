@@ -50,14 +50,19 @@ def test_docs_and_non_python_script_paths_skip_tests_and_e2e(ci_text: str) -> No
     assert "- 'scripts/**'" not in ci_text
     assert "- '**/*.py'" not in ci_text
     assert "--ignore=tests/test_e2e_dashboard.py" in ci_text
-    assert "needs_tests != 'true'" in ci_text
-    assert "needs_e2e != 'true'" in ci_text
+    # Always-green aggregator waives the required check without Postgres.
+    assert "name: Test Coverage Gate" in ci_text
+    assert "Skipping pytest + Postgres" in ci_text or "coverage gate waived" in ci_text
+    assert "needs.changes.outputs.needs_tests" in ci_text
 
 
 def test_e2e_filter_targets_ui_surface_only(ci_text: str) -> None:
     e2e_block = ci_text.split("needs_e2e:", 1)[1]
-    # Truncate at the next top-level step key after the filter block.
-    e2e_block = e2e_block.split("- name:", 1)[0]
+    # Truncate at the next workflow job after the paths-filter block.
+    for sep in ("\n  test:", "\n  test_gate:", "\n- name:"):
+        if sep in e2e_block:
+            e2e_block = e2e_block.split(sep, 1)[0]
+            break
     for required in (
         "app/api/**",
         "app/routers/**",
@@ -82,3 +87,20 @@ def test_app_paths_keep_coverage_gate_with_e2e(ci_text: str) -> None:
     assert "self-hosted" not in ci_text
     assert "check_mutation_score.py" not in ci_text
     assert "uv sync --frozen" in ci_text
+
+
+def test_coverage_gate_uses_xdist_without_dropping_cov(ci_text: str) -> None:
+    """Speed via xdist + per-worker DBs; ≥90% coverage gate must remain."""
+    assert "-n 2" in ci_text
+    assert "--dist loadgroup" in ci_text
+    assert ci_text.count("--cov-fail-under=90") >= 2
+    assert "--cov=app" in ci_text
+    # Postgres service only on the real pytest job (not the always-green gate).
+    assert "name: Pytest + Coverage" in ci_text
+    assert "image: postgres:15" in ci_text
+
+
+def test_postgres_not_required_on_docs_only_gate(ci_text: str) -> None:
+    gate = ci_text.split("name: Test Coverage Gate", 1)[1]
+    assert "image: postgres:15" not in gate.split("name:", 1)[0]
+    assert "if: always()" in ci_text
