@@ -79,4 +79,58 @@
             {% endfor %}
         </ul>
     </div>
+
+    <div class="card" id="overview-history">
+        <div class="card-head">
+            <div>
+                <h2>History</h2>
+                <p>Closing balances over statement periods and category income vs spend by month.</p>
+            </div>
+            <span class="chip chip-neutral">Vault series</span>
+        </div>
+
+        <div class="history-block">
+            <div class="eyebrow">Closing balances (statement end)</div>
+            {% if history.balance_svg %}
+            <div class="history-chart-wrap" aria-label="Balance history">
+                {{ history.balance_svg | safe }}
+                <div class="history-legend">
+                    <span><i class="swatch swatch-liquid"></i>Liquid total</span>
+                    {% for label in history.account_series_labels %}
+                    <span><i class="swatch swatch-account"></i>{{ label }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+            {% else %}
+            <div class="alert" role="alert">
+                <svg class="icon"><use href="#i-alert"/></svg>
+                <div>
+                    <h4>Not enough statement periods</h4>
+                    <p><code>{{ history.balance_empty_code }}</code> — need at least two statement end dates to chart liquid closing balances. Upload another period or run <code>scripts/seed_history_charts.py</code>.</p>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="history-block">
+            <div class="eyebrow">Category income / spend (by month)</div>
+            {% if history.category_svg %}
+            <div class="history-chart-wrap" aria-label="Category history">
+                {{ history.category_svg | safe }}
+                <div class="history-legend">
+                    <span><i class="swatch swatch-income"></i>Income (deposit&hellip;)</span>
+                    <span><i class="swatch swatch-spend"></i>Spend (purchase/withdrawal&hellip;)</span>
+                </div>
+            </div>
+            {% else %}
+            <div class="alert" role="alert">
+                <svg class="icon"><use href="#i-alert"/></svg>
+                <div>
+                    <h4>No categorized transactions</h4>
+                    <p><code>{{ history.category_empty_code }}</code> — income/spend bars need pipeline <code>transaction_category</code> rows. Seed multi-month history or ingest statements with transactions.</p>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
 </section>

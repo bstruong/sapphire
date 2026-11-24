@@ -30,6 +30,11 @@ from app.budget.envelopes import (
     ready_to_assign_cents,
 )
 from app.db.connection import get_db_connection
+from app.db.history import (
+    list_account_balance_series,
+    list_category_month_totals,
+    list_liquid_closing_by_period,
+)
 from app.db.repository import (
     get_canonical_statement,
     get_run_statements,
@@ -45,6 +50,10 @@ from app.pipeline.ingest_service import (
     IngestSuccess,
     ingest_pdf_batch,
     ingest_pdf_path,
+)
+from app.presentation.history_charts import (
+    render_balance_history_svg,
+    render_category_history_svg,
 )
 from app.presentation.label_format import format_snake_label
 from app.presentation.liquidity import (
@@ -119,12 +128,56 @@ def _sum_closing_for_liquidity(
     return total
 
 
+def _overview_history_context() -> dict[str, Any]:
+    """Build History section context (SVGs or loud empty codes)."""
+    with get_db_connection() as conn:
+        liquid_series = list_liquid_closing_by_period(conn)
+        account_series = list_account_balance_series(conn)
+        category_months = list_category_month_totals(conn)
+
+    balance_svg: str | None = None
+    balance_empty_code: str | None = None
+    if len(liquid_series) >= 2:
+        balance_svg = render_balance_history_svg(
+            liquid_series, account_series=account_series
+        )
+    else:
+        balance_empty_code = "HISTORY_BALANCE_INSUFFICIENT"
+
+    category_svg: str | None = None
+    category_empty_code: str | None = None
+    if category_months:
+        category_svg = render_category_history_svg(category_months)
+    else:
+        category_empty_code = "HISTORY_CATEGORY_EMPTY"
+
+    logger.info(
+        "Dashboard overview history prepared",
+        extra={
+            "liquid_periods": len(liquid_series),
+            "category_months": len(category_months),
+            "balance_ready": balance_svg is not None,
+            "category_ready": category_svg is not None,
+        },
+    )
+    return {
+        "balance_svg": balance_svg,
+        "balance_empty_code": balance_empty_code,
+        "category_svg": category_svg,
+        "category_empty_code": category_empty_code,
+        "account_series_labels": [
+            f"{s.institution} {s.account_mask}" for s in account_series
+        ],
+    }
+
+
 def _render_overview_html() -> str:
     """Templated account overview or empty state (never fake zero portfolio)."""
     try:
         accounts = _overview_accounts()
         with get_db_connection() as conn:
             available = ready_to_assign_cents(conn)
+        history = _overview_history_context() if accounts else None
     except Exception as exc:  # noqa: BLE001
         logger.error(
             "Dashboard overview query failed",
@@ -156,6 +209,7 @@ def _render_overview_html() -> str:
             "institution": last_row["institution"],
             "account_mask": last_row["account_mask"],
         },
+        history=history,
     )
 
 

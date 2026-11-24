@@ -1,6 +1,6 @@
 # Pitch: History charts (balances + categories)
 
-**Status:** Shaped  
+**Status:** Built (PR)  
 **Builder:** Cloud agent (Cloud-Build Mode)  
 **Bettor:** Human PM  
 **Appetite:** Small Batch (2 weeks)
@@ -55,11 +55,11 @@ flowchart LR
 
 ## Done-when
 
-- [ ] Executable QA: `uv run python scripts/qa_history_charts.py` prints `[PASS]` / `[FAIL]` for happy and negative cases
-- [ ] Manual UI QA: seed → Overview History shows both series; empty vault shows loud empty (not blank)
-- [ ] Wireframe linked under `docs/specs/visuals/`
-- [ ] Core invariants: integer cents, fail-loud contracts, no PII/amount logging
-- [ ] CI gates: ruff + `pytest --cov=app --cov-fail-under=90`
+- [x] Executable QA: `uv run python scripts/qa_history_charts.py` prints `[PASS]` / `[FAIL]` for happy and negative cases
+- [x] Manual UI QA: seed → Overview History shows both series; empty vault shows loud empty (not blank)
+- [x] Wireframe linked under `docs/specs/visuals/`
+- [x] Core invariants: integer cents, fail-loud contracts, no PII/amount logging
+- [x] CI gates: ruff + `pytest --cov=app --cov-fail-under=90`
 - [ ] GitHub Project board updated (Lane=Shipped / Circuit-broken / Raw)
 
 ## Circuit breaker
