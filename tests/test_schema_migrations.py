@@ -97,6 +97,7 @@ def test_packaged_migrations_start_at_baseline_snapshot() -> None:
         "0004",
         "0005",
         "0006",
+        "0007",
     ]
     assert discovered[0].path == SCHEMA_PATH
     assert discovered[0].path.is_file()
@@ -105,6 +106,7 @@ def test_packaged_migrations_start_at_baseline_snapshot() -> None:
     assert discovered[3].path.name.startswith("0004_")
     assert discovered[4].path.name.startswith("0005_")
     assert discovered[5].path.name.startswith("0006_")
+    assert discovered[6].path.name.startswith("0007_")
 
 
 def test_fresh_apply_reaches_holdings_with_integer_cents(
@@ -113,7 +115,7 @@ def test_fresh_apply_reaches_holdings_with_integer_cents(
     with psycopg.connect(empty_database_url) as conn:
         applied = apply_migrations(conn)
         conn.commit()
-        assert applied == ["0001", "0002", "0003", "0004", "0005", "0006"]
+        assert applied == ["0001", "0002", "0003", "0004", "0005", "0006", "0007"]
         assert _column_type(conn, "holdings", "market_value_cents") == "bigint"
         assert _column_type(conn, "statements", "opening_balance_cents") == "bigint"
         assert _column_type(conn, "envelopes", "balance_cents") == "bigint"
@@ -122,8 +124,9 @@ def test_fresh_apply_reaches_holdings_with_integer_cents(
         assert _column_type(conn, "transaction_spend_labels", "source") == "text"
         assert _column_type(conn, "spend_label_rules", "payee_pattern") == "text"
         assert _column_type(conn, "spend_label_suggestions", "origin") == "text"
+        assert _column_type(conn, "spend_label_suggestions", "statement_id") == "uuid"
         ledger = _ledger(conn)
-        assert len(ledger) == 6
+        assert len(ledger) == 7
         assert ledger[0][0] == "0001"
         assert ledger[0][1] == migration_checksum(SCHEMA_PATH)
         assert ledger[1][0] == "0002"
@@ -131,6 +134,7 @@ def test_fresh_apply_reaches_holdings_with_integer_cents(
         assert ledger[3][0] == "0004"
         assert ledger[4][0] == "0005"
         assert ledger[5][0] == "0006"
+        assert ledger[6][0] == "0007"
 
 
 def test_init_db_on_fresh_database_uses_migration_runner(
@@ -149,6 +153,7 @@ def test_init_db_on_fresh_database_uses_migration_runner(
             "0004",
             "0005",
             "0006",
+            "0007",
         ]
 
     standalone = psycopg.connect(empty_database_url)
@@ -161,6 +166,7 @@ def test_init_db_on_fresh_database_uses_migration_runner(
             "0004",
             "0005",
             "0006",
+            "0007",
         ]
     finally:
         standalone.close()
@@ -175,6 +181,7 @@ def test_second_apply_is_a_noop(empty_database_url: str) -> None:
             "0004",
             "0005",
             "0006",
+            "0007",
         ]
         conn.commit()
         before = _ledger(conn)

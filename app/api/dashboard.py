@@ -85,6 +85,7 @@ from app.spend.suggest import (
     reject_all_vault_suggestions,
     reject_suggestion_group,
     run_suggest,
+    statement_scope_counts,
 )
 
 logger = logging.getLogger("app.api.dashboard")
@@ -648,18 +649,25 @@ def _suggest_context_idle(
     *,
     year: int,
     month: int,
+    statement_id: UUID | None = None,
     categories: list[Any] | None = None,
 ) -> dict[str, Any]:
     with get_db_connection() as conn:
         cats = categories if categories is not None else list_spend_categories(conn)
-        unlabeled, opaque, suggestable = month_scope_counts(
-            conn, year=year, month=month
-        )
+        if statement_id is not None:
+            unlabeled, opaque, suggestable = statement_scope_counts(
+                conn, statement_id=statement_id
+            )
+        else:
+            unlabeled, opaque, suggestable = month_scope_counts(
+                conn, year=year, month=month
+            )
     return {
         "has_run": False,
         "batch_id": "",
         "pie_year": year,
         "pie_month": month,
+        "statement_id": str(statement_id) if statement_id is not None else "",
         "unlabeled_count": unlabeled,
         "opaque_count": opaque,
         "suggestable_count": suggestable,
@@ -677,8 +685,11 @@ def _suggest_context_from_batch(
     return {
         "has_run": True,
         "batch_id": str(batch.batch_id),
-        "pie_year": batch.pie_year,
-        "pie_month": batch.pie_month,
+        "pie_year": batch.pie_year if batch.pie_year is not None else "",
+        "pie_month": batch.pie_month if batch.pie_month is not None else "",
+        "statement_id": (
+            str(batch.statement_id) if batch.statement_id is not None else ""
+        ),
         "unlabeled_count": batch.unlabeled_count,
         "opaque_count": batch.opaque_count,
         "suggestable_count": batch.suggestable_count,
@@ -728,11 +739,20 @@ def _render_ledger_html(
     back_href: str = "/api/v1/dashboard/overview",
     back_label: str = "Back to overview",
     suggest: dict[str, Any] | None = None,
+    suggest_statement_id: UUID | None = None,
 ) -> str:
     if not ledgers:
         return env.get_template("ledger_empty.html").render()
     year, month = _default_suggest_year_month(ledgers)
-    suggest_ctx = suggest or _suggest_context_idle(year=year, month=month)
+    # Q3: statement ledger gets statement-scoped Suggest CTA; multi keeps month.
+    if suggest is not None:
+        suggest_ctx = suggest
+    elif suggest_statement_id is not None:
+        suggest_ctx = _suggest_context_idle(
+            year=year, month=month, statement_id=suggest_statement_id
+        )
+    else:
+        suggest_ctx = _suggest_context_idle(year=year, month=month)
     return env.get_template("ledger_result.html").render(
         ledgers=ledgers,
         run_id=str(run_id) if run_id else None,
@@ -752,6 +772,27 @@ def _parse_pie_form_year_month(pie_year: str, pie_month: str) -> tuple[int, int]
     if year < 1970 or year > 2100 or month < 1 or month > 12:
         raise TokenError("PIE_MONTH_INVALID: out of range")
     return year, month
+
+
+def _parse_optional_statement_id(raw: str) -> UUID | None:
+    stripped = str(raw or "").strip()
+    if not stripped:
+        return None
+    try:
+        return UUID(stripped)
+    except ValueError as exc:
+        raise TokenError(f"Invalid statement_id: {stripped}") from exc
+
+
+def _optional_pie_year_month(
+    pie_year: str, pie_month: str
+) -> tuple[int | None, int | None]:
+    """Parse month fields when present; empty pair is allowed for statement scope."""
+    y_raw = str(pie_year or "").strip()
+    m_raw = str(pie_month or "").strip()
+    if not y_raw and not m_raw:
+        return None, None
+    return _parse_pie_form_year_month(y_raw, m_raw)
 
 
 def _require_htmx(request: Request) -> None:
@@ -1119,6 +1160,7 @@ async def get_statement_ledger(
             ledgers=[block],
             back_href=back_href,
             back_label=back_label,
+            suggest_statement_id=statement_id,
         )
     )
 
@@ -1234,6 +1276,7 @@ async def post_ledger_spend_label(
             ledgers=[block],
             back_href=back_href,
             back_label=back_label,
+            suggest_statement_id=stmt_uuid,
         )
     )
 
@@ -1243,6 +1286,10 @@ def _suggest_error_response(exc: TokenError) -> HTMLResponse:
     code = "SUGGEST_REJECTED"
     if "PIE_MONTH_INVALID" in text:
         code = "PIE_MONTH_INVALID"
+    elif "SUGGEST_SCOPE_REQUIRED" in text:
+        code = "SUGGEST_SCOPE_REQUIRED"
+    elif "STATEMENT_NOT_FOUND" in text:
+        code = "STATEMENT_NOT_FOUND"
     elif "SPEND_CATEGORY_UNKNOWN" in text:
         code = "SPEND_CATEGORY_UNKNOWN"
     elif "OPAQUE_PAYEE_INELIGIBLE" in text:
@@ -1264,22 +1311,51 @@ def _suggest_error_response(exc: TokenError) -> HTMLResponse:
     )
 
 
+def _reload_suggest_panel(
+    *,
+    batch_id: UUID,
+    pie_year: str,
+    pie_month: str,
+    statement_id_raw: str,
+    vault_available: str,
+) -> dict[str, Any]:
+    """Shared Accept/Reject panel reload (Q4: prefer statement when present)."""
+    stmt = _parse_optional_statement_id(statement_id_raw)
+    year, month = _optional_pie_year_month(pie_year, pie_month)
+    vault_up = vault_available.strip() == "1"
+    with get_db_connection() as conn:
+        categories = list_spend_categories(conn)
+        batch = load_batch(
+            conn,
+            batch_id=batch_id,
+            year=year,
+            month=month,
+            statement_id=stmt,
+            vault_available=vault_up,
+            vault_skipped_reason=None if vault_up else "jarvis_unavailable",
+        )
+        return _suggest_context_from_batch(batch, categories=categories)
+
+
 @dashboard_api.post(
     "/ledger/suggest/run",
     response_class=HTMLResponse,
-    responses={400: {"description": "Invalid month or missing HTMX"}},
+    responses={400: {"description": "Invalid scope or missing HTMX"}},
 )
 async def post_ledger_suggest_run(
     request: Request,
     pie_year: Annotated[str, Form()] = "",
     pie_month: Annotated[str, Form()] = "",
+    statement_id: Annotated[str, Form()] = "",
 ) -> HTMLResponse:
-    """Stage rule (+ optional Vault) suggestions for a calendar month."""
+    """Stage rule (+ optional Vault) suggestions for month or statement scope."""
     _require_htmx(request)
     try:
-        year, month = _parse_pie_form_year_month(pie_year, pie_month)
+        stmt = _parse_optional_statement_id(statement_id)
+        year, month = _optional_pie_year_month(pie_year, pie_month)
         with get_db_connection() as conn:
-            batch = run_suggest(conn, year=year, month=month)
+            # Q4: prefer statement when dual scope is sent.
+            batch = run_suggest(conn, year=year, month=month, statement_id=stmt)
             categories = list_spend_categories(conn)
             ctx = _suggest_context_from_batch(batch, categories=categories)
     except TokenError as exc:
@@ -1299,29 +1375,24 @@ async def post_ledger_suggest_accept(
     slug: Annotated[str, Form()] = "",
     pie_year: Annotated[str, Form()] = "",
     pie_month: Annotated[str, Form()] = "",
+    statement_id: Annotated[str, Form()] = "",
     vault_available: Annotated[str, Form()] = "0",
 ) -> HTMLResponse:
     """Accept one suggestion group; rewrite panel from remaining staging."""
     _require_htmx(request)
     try:
-        year, month = _parse_pie_form_year_month(pie_year, pie_month)
         bid = UUID(batch_id.strip())
         with get_db_connection() as conn:
             accept_suggestion_group(
                 conn, batch_id=bid, group_key=group_key.strip(), slug=slug
             )
-            categories = list_spend_categories(conn)
-            batch = load_batch(
-                conn,
-                batch_id=bid,
-                year=year,
-                month=month,
-                vault_available=vault_available.strip() == "1",
-                vault_skipped_reason=(
-                    None if vault_available.strip() == "1" else "jarvis_unavailable"
-                ),
-            )
-            ctx = _suggest_context_from_batch(batch, categories=categories)
+        ctx = _reload_suggest_panel(
+            batch_id=bid,
+            pie_year=pie_year,
+            pie_month=pie_month,
+            statement_id_raw=statement_id,
+            vault_available=vault_available,
+        )
     except (TokenError, ValueError) as exc:
         if isinstance(exc, ValueError):
             return _suggest_error_response(TokenError(f"Invalid batch_id: {exc}"))
@@ -1340,27 +1411,22 @@ async def post_ledger_suggest_reject(
     group_key: Annotated[str, Form()] = "",
     pie_year: Annotated[str, Form()] = "",
     pie_month: Annotated[str, Form()] = "",
+    statement_id: Annotated[str, Form()] = "",
     vault_available: Annotated[str, Form()] = "0",
 ) -> HTMLResponse:
     """Reject one suggestion group (staging only)."""
     _require_htmx(request)
     try:
-        year, month = _parse_pie_form_year_month(pie_year, pie_month)
         bid = UUID(batch_id.strip())
         with get_db_connection() as conn:
             reject_suggestion_group(conn, batch_id=bid, group_key=group_key.strip())
-            categories = list_spend_categories(conn)
-            batch = load_batch(
-                conn,
-                batch_id=bid,
-                year=year,
-                month=month,
-                vault_available=vault_available.strip() == "1",
-                vault_skipped_reason=(
-                    None if vault_available.strip() == "1" else "jarvis_unavailable"
-                ),
-            )
-            ctx = _suggest_context_from_batch(batch, categories=categories)
+        ctx = _reload_suggest_panel(
+            batch_id=bid,
+            pie_year=pie_year,
+            pie_month=pie_month,
+            statement_id_raw=statement_id,
+            vault_available=vault_available,
+        )
     except (TokenError, ValueError) as exc:
         if isinstance(exc, ValueError):
             return _suggest_error_response(TokenError(f"Invalid batch_id: {exc}"))
@@ -1378,27 +1444,22 @@ async def post_ledger_suggest_accept_all_rules(
     batch_id: Annotated[str, Form()] = "",
     pie_year: Annotated[str, Form()] = "",
     pie_month: Annotated[str, Form()] = "",
+    statement_id: Annotated[str, Form()] = "",
     vault_available: Annotated[str, Form()] = "0",
 ) -> HTMLResponse:
     """Accept every staged rule group. Never bulk-accepts Vault."""
     _require_htmx(request)
     try:
-        year, month = _parse_pie_form_year_month(pie_year, pie_month)
         bid = UUID(batch_id.strip())
         with get_db_connection() as conn:
             accept_all_rule_suggestions(conn, batch_id=bid)
-            categories = list_spend_categories(conn)
-            batch = load_batch(
-                conn,
-                batch_id=bid,
-                year=year,
-                month=month,
-                vault_available=vault_available.strip() == "1",
-                vault_skipped_reason=(
-                    None if vault_available.strip() == "1" else "jarvis_unavailable"
-                ),
-            )
-            ctx = _suggest_context_from_batch(batch, categories=categories)
+        ctx = _reload_suggest_panel(
+            batch_id=bid,
+            pie_year=pie_year,
+            pie_month=pie_month,
+            statement_id_raw=statement_id,
+            vault_available=vault_available,
+        )
     except (TokenError, ValueError) as exc:
         if isinstance(exc, ValueError):
             return _suggest_error_response(TokenError(f"Invalid batch_id: {exc}"))
@@ -1416,27 +1477,22 @@ async def post_ledger_suggest_reject_all_vault(
     batch_id: Annotated[str, Form()] = "",
     pie_year: Annotated[str, Form()] = "",
     pie_month: Annotated[str, Form()] = "",
+    statement_id: Annotated[str, Form()] = "",
     vault_available: Annotated[str, Form()] = "0",
 ) -> HTMLResponse:
     """Drop all Vault-staged suggestions for the batch."""
     _require_htmx(request)
     try:
-        year, month = _parse_pie_form_year_month(pie_year, pie_month)
         bid = UUID(batch_id.strip())
         with get_db_connection() as conn:
             reject_all_vault_suggestions(conn, batch_id=bid)
-            categories = list_spend_categories(conn)
-            batch = load_batch(
-                conn,
-                batch_id=bid,
-                year=year,
-                month=month,
-                vault_available=vault_available.strip() == "1",
-                vault_skipped_reason=(
-                    None if vault_available.strip() == "1" else "jarvis_unavailable"
-                ),
-            )
-            ctx = _suggest_context_from_batch(batch, categories=categories)
+        ctx = _reload_suggest_panel(
+            batch_id=bid,
+            pie_year=pie_year,
+            pie_month=pie_month,
+            statement_id_raw=statement_id,
+            vault_available=vault_available,
+        )
     except (TokenError, ValueError) as exc:
         if isinstance(exc, ValueError):
             return _suggest_error_response(TokenError(f"Invalid batch_id: {exc}"))

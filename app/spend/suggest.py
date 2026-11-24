@@ -60,13 +60,14 @@ class SuggestBatch:
     """Result of Run suggest (staging only)."""
 
     batch_id: UUID
-    pie_year: int
-    pie_month: int
+    pie_year: int | None
+    pie_month: int | None
     unlabeled_count: int
     opaque_count: int
     suggestable_count: int
     vault_available: bool
     vault_skipped_reason: str | None
+    statement_id: UUID | None = None
     rule_groups: list[SuggestionGroup] = field(default_factory=list)
     vault_groups: list[SuggestionGroup] = field(default_factory=list)
 
@@ -181,18 +182,94 @@ def month_scope_counts(
     return int(counts[0]), int(counts[1]), int(counts[2])
 
 
+def statement_scope_counts(
+    conn: psycopg.Connection, *, statement_id: UUID
+) -> tuple[int, int, int]:
+    if not isinstance(statement_id, UUID):
+        raise TokenError("statement_id must be a UUID")
+    counts = conn.execute(
+        """
+        SELECT
+          COUNT(*) FILTER (WHERE amount_cents < 0 AND label_missing) AS unlabeled,
+          COUNT(*) FILTER (
+            WHERE amount_cents < 0 AND label_missing AND payee IS NULL
+          ) AS opaque,
+          COUNT(*) FILTER (
+            WHERE amount_cents < 0 AND label_missing AND payee IS NOT NULL
+          ) AS suggestable
+        FROM (
+          SELECT t.amount_cents, t.payee,
+                 (l.transaction_id IS NULL) AS label_missing
+          FROM transactions t
+          LEFT JOIN transaction_spend_labels l
+            ON l.transaction_id = t.transaction_id
+          WHERE t.statement_id = %s
+        ) scoped
+        """,
+        (str(statement_id),),
+    ).fetchone()
+    if counts is None:
+        return 0, 0, 0
+    return int(counts[0]), int(counts[1]), int(counts[2])
+
+
+def _require_statement(conn: psycopg.Connection, statement_id: UUID) -> tuple[int, int]:
+    """Fail loud on unknown statement; return display year/month from end date."""
+    if not isinstance(statement_id, UUID):
+        raise TokenError("statement_id must be a UUID")
+    row = conn.execute(
+        """
+        SELECT statement_end_date
+        FROM statements
+        WHERE statement_id = %s
+        """,
+        (str(statement_id),),
+    ).fetchone()
+    if row is None:
+        raise TokenError(f"STATEMENT_NOT_FOUND: statement_id={statement_id}")
+    end_date = row[0]
+    if not isinstance(end_date, date):
+        raise TokenError(f"STATEMENT_END_DATE_INVALID: statement_id={statement_id}")
+    return int(end_date.year), int(end_date.month)
+
+
 def load_batch(
     conn: psycopg.Connection,
     *,
     batch_id: UUID,
-    year: int,
-    month: int,
+    year: int | None = None,
+    month: int | None = None,
+    statement_id: UUID | None = None,
     vault_available: bool,
     vault_skipped_reason: str | None,
 ) -> SuggestBatch:
     """Rebuild a SuggestBatch view for an existing batch_id."""
     if not isinstance(batch_id, UUID):
         raise TokenError("batch_id must be a UUID")
+    # Q4: prefer statement when dual scope is present.
+    if statement_id is not None:
+        display_year, display_month = _require_statement(conn, statement_id)
+        unlabeled, opaque, suggestable = statement_scope_counts(
+            conn, statement_id=statement_id
+        )
+        rule_groups, vault_groups = _load_batch_groups(conn, batch_id)
+        return SuggestBatch(
+            batch_id=batch_id,
+            pie_year=display_year,
+            pie_month=display_month,
+            unlabeled_count=unlabeled,
+            opaque_count=opaque,
+            suggestable_count=suggestable,
+            vault_available=vault_available,
+            vault_skipped_reason=vault_skipped_reason,
+            statement_id=statement_id,
+            rule_groups=rule_groups,
+            vault_groups=vault_groups,
+        )
+    if year is None or month is None:
+        raise TokenError(
+            "SUGGEST_SCOPE_REQUIRED: provide statement_id or pie_year/month"
+        )
     unlabeled, opaque, suggestable = month_scope_counts(conn, year=year, month=month)
     rule_groups, vault_groups = _load_batch_groups(conn, batch_id)
     return SuggestBatch(
@@ -204,21 +281,56 @@ def load_batch(
         suggestable_count=suggestable,
         vault_available=vault_available,
         vault_skipped_reason=vault_skipped_reason,
+        statement_id=None,
         rule_groups=rule_groups,
         vault_groups=vault_groups,
     )
 
 
 def load_latest_batch(
-    conn: psycopg.Connection, *, year: int, month: int
+    conn: psycopg.Connection,
+    *,
+    year: int | None = None,
+    month: int | None = None,
+    statement_id: UUID | None = None,
 ) -> SuggestBatch | None:
-    """Load the newest staged batch for a calendar month, if any."""
+    """Load the newest staged batch for a scope, if any."""
+    # Q4: prefer statement when dual scope is present.
+    if statement_id is not None:
+        _require_statement(conn, statement_id)
+        row = conn.execute(
+            """
+            SELECT batch_id
+            FROM spend_label_suggestions
+            WHERE statement_id = %s
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (str(statement_id),),
+        ).fetchone()
+        if row is None:
+            return None
+        batch_id = UUID(str(row[0]))
+        _rule_groups, vault_groups = _load_batch_groups(conn, batch_id)
+        vault_available = bool(vault_groups)
+        reason = None if vault_available else "no_vault_groups_or_prior_cleared"
+        return load_batch(
+            conn,
+            batch_id=batch_id,
+            statement_id=statement_id,
+            vault_available=vault_available,
+            vault_skipped_reason=reason,
+        )
+    if year is None or month is None:
+        raise TokenError(
+            "SUGGEST_SCOPE_REQUIRED: provide statement_id or pie_year/month"
+        )
     _month_bounds(year, month)
     row = conn.execute(
         """
         SELECT batch_id
         FROM spend_label_suggestions
-        WHERE pie_year = %s AND pie_month = %s
+        WHERE pie_year = %s AND pie_month = %s AND statement_id IS NULL
         ORDER BY created_at DESC
         LIMIT 1
         """,
@@ -256,43 +368,122 @@ def _closed_slug_schema(conn: psycopg.Connection) -> tuple[str, frozenset[str]]:
     return schema, slugs
 
 
+def _insert_suggestion(
+    conn: psycopg.Connection,
+    *,
+    batch_id: UUID,
+    txn_id: Any,
+    payee: str,
+    payee_normalized: str,
+    slug: str,
+    origin: str,
+    evidence: str,
+    abs_cents: int,
+    year: int | None,
+    month: int | None,
+    statement_id: UUID | None,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO spend_label_suggestions (
+            suggestion_id, batch_id, transaction_id, payee_display,
+            payee_normalized, proposed_slug, origin, evidence,
+            pie_year, pie_month, abs_amount_cents, statement_id
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """,
+        (
+            str(uuid4()),
+            str(batch_id),
+            str(txn_id),
+            payee,
+            payee_normalized,
+            slug,
+            origin,
+            evidence,
+            year,
+            month,
+            abs_cents,
+            str(statement_id) if statement_id is not None else None,
+        ),
+    )
+
+
 def run_suggest(
     conn: psycopg.Connection,
     *,
-    year: int,
-    month: int,
+    year: int | None = None,
+    month: int | None = None,
+    statement_id: UUID | None = None,
     vault_client: VaultClientProtocol | None = None,
 ) -> SuggestBatch:
-    """Compute suggestions for unlabeled outflows in a calendar month.
+    """Compute suggestions for unlabeled outflows in a scope.
 
-    Idempotent recompute: clears prior staging for the month, then inserts a
-    new batch. Does not write ``transaction_spend_labels``.
+    Scope rules (locked Q4/Q5):
+    - ``statement_id`` present → prefer statement (ignore month).
+    - month-only → calendar month with ``statement_id IS NULL`` staging.
+    - neither → fail loud.
+
+    Idempotent recompute: clears prior staging for the active scope, then
+    inserts a new batch. Does not write ``transaction_spend_labels``.
     """
-    start, end = _month_bounds(year, month)
     client = vault_client if vault_client is not None else VaultInferenceClient()
 
-    conn.execute(
-        """
-        DELETE FROM spend_label_suggestions
-        WHERE pie_year = %s AND pie_month = %s
-        """,
-        (year, month),
-    )
+    scope_statement_id: UUID | None = None
+    scope_year: int | None = None
+    scope_month: int | None = None
 
-    rows = conn.execute(
-        """
-        SELECT t.transaction_id, t.payee, t.amount_cents
-        FROM transactions t
-        LEFT JOIN transaction_spend_labels l
-          ON l.transaction_id = t.transaction_id
-        WHERE t.amount_cents < 0
-          AND t.post_date >= %s
-          AND t.post_date < %s
-          AND l.transaction_id IS NULL
-        ORDER BY t.post_date, t.transaction_id
-        """,
-        (start, end),
-    ).fetchall()
+    # Q4: prefer statement when both scopes are sent.
+    if statement_id is not None:
+        scope_statement_id = statement_id
+        scope_year, scope_month = _require_statement(conn, statement_id)
+        conn.execute(
+            """
+            DELETE FROM spend_label_suggestions
+            WHERE statement_id = %s
+            """,
+            (str(statement_id),),
+        )
+        rows = conn.execute(
+            """
+            SELECT t.transaction_id, t.payee, t.amount_cents
+            FROM transactions t
+            LEFT JOIN transaction_spend_labels l
+              ON l.transaction_id = t.transaction_id
+            WHERE t.amount_cents < 0
+              AND t.statement_id = %s
+              AND l.transaction_id IS NULL
+            ORDER BY t.post_date, t.transaction_id
+            """,
+            (str(statement_id),),
+        ).fetchall()
+    else:
+        if year is None or month is None:
+            raise TokenError(
+                "SUGGEST_SCOPE_REQUIRED: provide statement_id or pie_year/month"
+            )
+        start, end = _month_bounds(year, month)
+        scope_year, scope_month = year, month
+        conn.execute(
+            """
+            DELETE FROM spend_label_suggestions
+            WHERE pie_year = %s AND pie_month = %s AND statement_id IS NULL
+            """,
+            (year, month),
+        )
+        rows = conn.execute(
+            """
+            SELECT t.transaction_id, t.payee, t.amount_cents
+            FROM transactions t
+            LEFT JOIN transaction_spend_labels l
+              ON l.transaction_id = t.transaction_id
+            WHERE t.amount_cents < 0
+              AND t.post_date >= %s
+              AND t.post_date < %s
+              AND l.transaction_id IS NULL
+            ORDER BY t.post_date, t.transaction_id
+            """,
+            (start, end),
+        ).fetchall()
 
     unlabeled = len(rows)
     opaque_rows = [r for r in rows if r[1] is None]
@@ -315,26 +506,19 @@ def run_suggest(
         if hit is None:
             residual.append((txn_id, payee, abs_cents))
             continue
-        conn.execute(
-            """
-            INSERT INTO spend_label_suggestions (
-                suggestion_id, batch_id, transaction_id, payee_display,
-                payee_normalized, proposed_slug, origin, evidence,
-                pie_year, pie_month, abs_amount_cents
-            ) VALUES (%s, %s, %s, %s, %s, %s, 'rule', %s, %s, %s, %s)
-            """,
-            (
-                str(uuid4()),
-                str(batch_id),
-                str(txn_id),
-                str(payee),
-                hit.payee_normalized,
-                hit.slug,
-                f"exact map · {hit.slug}",
-                year,
-                month,
-                abs_cents,
-            ),
+        _insert_suggestion(
+            conn,
+            batch_id=batch_id,
+            txn_id=txn_id,
+            payee=str(payee),
+            payee_normalized=hit.payee_normalized,
+            slug=hit.slug,
+            origin="rule",
+            evidence=f"exact map · {hit.slug}",
+            abs_cents=abs_cents,
+            year=scope_year,
+            month=scope_month,
+            statement_id=scope_statement_id,
         )
         staged += 1
 
@@ -396,26 +580,19 @@ def run_suggest(
                 else "Vault closed-set map"
             )
             for txn_id, payee, abs_cents in items:
-                conn.execute(
-                    """
-                    INSERT INTO spend_label_suggestions (
-                        suggestion_id, batch_id, transaction_id, payee_display,
-                        payee_normalized, proposed_slug, origin, evidence,
-                        pie_year, pie_month, abs_amount_cents
-                    ) VALUES (%s, %s, %s, %s, %s, %s, 'vault_suggest', %s, %s, %s, %s)
-                    """,
-                    (
-                        str(uuid4()),
-                        str(batch_id),
-                        str(txn_id),
-                        str(payee),
-                        normalize_payee(str(payee)),
-                        slug_clean,
-                        evidence,
-                        year,
-                        month,
-                        int(abs_cents),
-                    ),
+                _insert_suggestion(
+                    conn,
+                    batch_id=batch_id,
+                    txn_id=txn_id,
+                    payee=str(payee),
+                    payee_normalized=normalize_payee(str(payee)),
+                    slug=slug_clean,
+                    origin="vault_suggest",
+                    evidence=evidence,
+                    abs_cents=int(abs_cents),
+                    year=scope_year,
+                    month=scope_month,
+                    statement_id=scope_statement_id,
                 )
                 staged += 1
 
@@ -424,8 +601,11 @@ def run_suggest(
         "Spend label suggest batch staged",
         extra={
             "batch_id": str(batch_id),
-            "year": year,
-            "month": month,
+            "year": scope_year,
+            "month": scope_month,
+            "statement_id": (
+                str(scope_statement_id) if scope_statement_id is not None else None
+            ),
             "unlabeled_count": unlabeled,
             "opaque_count": opaque_count,
             "suggestable_count": suggestable_count,
@@ -437,13 +617,14 @@ def run_suggest(
     )
     return SuggestBatch(
         batch_id=batch_id,
-        pie_year=year,
-        pie_month=month,
+        pie_year=scope_year,
+        pie_month=scope_month,
         unlabeled_count=unlabeled,
         opaque_count=opaque_count,
         suggestable_count=suggestable_count,
         vault_available=vault_available,
         vault_skipped_reason=vault_skipped_reason,
+        statement_id=scope_statement_id,
         rule_groups=rule_groups,
         vault_groups=vault_groups,
     )
