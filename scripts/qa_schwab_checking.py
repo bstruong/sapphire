@@ -5,7 +5,8 @@ Verifies:
 1. Redacted Schwab Bank PDF matches schwab_checking only (not brokerage).
 2. Brokerage fixture still matches schwab_brokerage.
 3. Canonical parse reconciles integer-cent buckets and net change.
-4. Unknown bank fails loud with AdapterRegistryError.
+4. Cross-month line-broken statement periods parse (Jan 31 → Feb 27).
+5. Unknown bank fails loud with AdapterRegistryError.
 
 Manual UI QA:
   uv run uvicorn app.api.app:create_app --factory --host 127.0.0.1 --port 8000
@@ -117,9 +118,42 @@ def main() -> int:
             _fail("Canonical parse / reconciliation mismatch")
             failures += 1
 
-        print("\n[Step 3: Loud negative — unknown bank]")
+        print("\n[Step 3: Cross-month period chrome (line-broken)]")
         from reportlab.pdfgen import canvas
 
+        cross = tmp_path / "cross_month.pdf"
+        c = canvas.Canvas(str(cross))
+        y = 750
+        for line in (
+            "Charles Schwab Bank Investor Checking Member FDIC",
+            "Statement Period",
+            "Account Number January 31, 2026 to",
+            "SYNTHETIC HOLDER [ACCOUNT_1] February 27, 2026",
+            "Beginning Balance $100.00",
+            "Deposits and Credits $0.00",
+            "Interest Paid $0.00",
+            "Withdrawals and Other Debits $0.00",
+            "Other Fees $0.00",
+            "Ending Balance $100.00",
+        ):
+            c.drawString(50, y, line)
+            y -= 15
+        c.save()
+        cross_adapter = SchwabCheckingAdapter()
+        cross_raw = extract_pdf_to_raw(
+            file_path=cross,
+            adapter_id=cross_adapter.adapter_id,
+            adapter_version=cross_adapter.adapter_version,
+            original_basename=cross.name,
+        )
+        _mask, _atype, start, end = cross_adapter.parse_header(cross_raw)
+        if start.isoformat() == "2026-01-31" and end.isoformat() == "2026-02-27":
+            _pass("Cross-month line-broken period parses (Jan 31 → Feb 27)")
+        else:
+            _fail(f"Cross-month period mismatch: {start} → {end}")
+            failures += 1
+
+        print("\n[Step 4: Loud negative — unknown bank]")
         unknown = tmp_path / "unknown.pdf"
         c = canvas.Canvas(str(unknown))
         c.drawString(50, 750, "SOME OTHER BANK CHECKING Account Number: *9999")

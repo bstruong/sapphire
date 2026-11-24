@@ -55,7 +55,7 @@ class SchwabCheckingAdapter(StandardDepositoryAdapter):
     """
 
     adapter_id = "schwab_checking"
-    adapter_version = "1.0.0"
+    adapter_version = "1.0.1"
     institution_id = "Charles Schwab Bank"
     account_types = frozenset({AccountType.CHECKING})
 
@@ -313,6 +313,11 @@ class SchwabCheckingAdapter(StandardDepositoryAdapter):
         - ``August 1-31, 2026`` (compact month range; live Bank PDFs)
         - ``August 1 - 31, 2026`` (spaced compact range)
         - ``August 1, 2026 through August 31, 2026`` (full month names)
+        - Cross-month with optional intervening chrome (name / account mask),
+          including line-broken live extracts::
+
+              January 31, 2026 to
+              [PERSON_1] [ACCOUNT_1] February 27, 2026
         """
         slash = re.search(
             r"(\d{1,2}/\d{1,2}/\d{2,4})\s*(?:to|-|through|–|—)\s*"
@@ -341,12 +346,17 @@ class SchwabCheckingAdapter(StandardDepositoryAdapter):
                 ) from exc
             return start_date, end_date
 
+        # Full / cross-month: allow short intervening chrome (holder name,
+        # account digits/mask) between the connector and the end month. Cap
+        # the skip so newsletter copy like "mid to late February" cannot
+        # latch onto an earlier Month+day+year elsewhere on the page.
         full = re.search(
             rf"({cls._MONTH_NAMES})\s+(\d{{1,2}}),?\s+(\d{{4}})\s*"
-            rf"(?:to|through|-|–|—)\s*"
+            rf"(?:to|through|-|–|—)\s+"
+            rf"(?:(?!(?:{cls._MONTH_NAMES})\s+\d).){{0,120}}?"
             rf"({cls._MONTH_NAMES})\s+(\d{{1,2}}),?\s+(\d{{4}})",
             all_text,
-            re.IGNORECASE,
+            re.IGNORECASE | re.DOTALL,
         )
         if full:
             m1, d1, y1, m2, d2, y2 = full.groups()
