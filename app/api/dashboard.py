@@ -17,7 +17,7 @@ import logging
 import tempfile
 from pathlib import Path
 from typing import Annotated, Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import HTMLResponse
@@ -38,7 +38,14 @@ from app.db.repository import (
 )
 from app.mcp.cloud_tools import CloudToolError, get_financial_summary
 from app.models.exceptions import AssignExceedsAvailableError, TokenError
-from app.pipeline.ingest_service import IngestFailure, IngestSuccess, ingest_pdf_path
+from app.pipeline.ingest_service import (
+    MAX_BATCH_FILES,
+    BatchItemResult,
+    IngestFailure,
+    IngestSuccess,
+    ingest_pdf_batch,
+    ingest_pdf_path,
+)
 from app.presentation.label_format import format_snake_label
 from app.presentation.liquidity import (
     LIQUIDITY_BROKERAGE,
@@ -621,6 +628,54 @@ async def analyze_question(
     return HTMLResponse(content=_render_ledger_html(ledgers=ledgers))
 
 
+def _upload_error_html(error_code: str, detail: str) -> HTMLResponse:
+    return HTMLResponse(
+        content=env.get_template("upload_error.html").render(
+            error_code=error_code,
+            detail=detail,
+        ),
+        status_code=status.HTTP_400_BAD_REQUEST,
+    )
+
+
+def _render_batch_result_html(results: list[BatchItemResult]) -> str:
+    succeeded = sum(1 for item in results if item.ok)
+    failed = len(results) - succeeded
+    rows = [
+        {
+            "filename": item.filename,
+            "ok": item.ok,
+            "statement_id": str(item.statement_id) if item.statement_id else None,
+            "run_id": str(item.run_id) if item.run_id else None,
+            "adapter_id": item.adapter_id or "",
+            "error_code": item.error_code or "",
+            "detail": item.detail or "",
+        }
+        for item in results
+    ]
+    return env.get_template("upload_batch_result.html").render(
+        succeeded=succeeded,
+        failed=failed,
+        total=len(results),
+        results=rows,
+    )
+
+
+async def _collect_upload_files(
+    files: list[UploadFile] | None,
+    file: UploadFile | None,
+) -> list[UploadFile]:
+    """Merge multi `files` parts with legacy single `file` into one list."""
+    collected: list[UploadFile] = []
+    if files:
+        for upload in files:
+            if upload is not None and upload.filename:
+                collected.append(upload)
+    if file is not None and file.filename and not any(u is file for u in collected):
+        collected.append(file)
+    return collected
+
+
 @dashboard_api.post(
     "/upload",
     response_class=HTMLResponse,
@@ -630,9 +685,14 @@ async def analyze_question(
 )
 async def upload_statement_html(
     request: Request,
+    files: Annotated[list[UploadFile] | None, File()] = None,
     file: Annotated[UploadFile | None, File()] = None,
 ) -> HTMLResponse:
-    """Ingest a PDF via the dashboard and swap a templated ledger into Pane 2."""
+    """Ingest one or more PDFs via the dashboard.
+
+    One file keeps the existing ledger swap. Two or more return a batch
+    summary with per-file OK/FAIL (partial success). Sequential ingest only.
+    """
     hx_request = request.headers.get("HX-Request", "").lower()
     if hx_request != "true":
         raise HTTPException(
@@ -640,43 +700,79 @@ async def upload_statement_html(
             detail="This endpoint requires an HTMX request (HX-Request: true).",
         )
 
-    if file is None or not file.filename:
-        return HTMLResponse(
-            content=env.get_template("upload_error.html").render(
-                error_code="MISSING_FILE",
-                detail="Choose a PDF statement to upload.",
-            ),
-            status_code=status.HTTP_400_BAD_REQUEST,
+    uploads = await _collect_upload_files(files, file)
+    if not uploads:
+        return _upload_error_html(
+            "MISSING_FILE",
+            "Choose a PDF statement to upload.",
         )
 
-    if not file.filename.lower().endswith(".pdf"):
-        return HTMLResponse(
-            content=env.get_template("upload_error.html").render(
-                error_code="INVALID_FILE",
-                detail="Only PDF documents are supported for ingestion.",
-            ),
-            status_code=status.HTTP_400_BAD_REQUEST,
+    if len(uploads) > MAX_BATCH_FILES:
+        return _upload_error_html(
+            "TOO_MANY_FILES",
+            f"At most {MAX_BATCH_FILES} files may be uploaded per request "
+            f"(received {len(uploads)}).",
         )
 
-    content = await file.read()
+    # Single-file path: preserve ledger swap for demo continuity.
+    if len(uploads) == 1:
+        return await _upload_single_statement_html(uploads[0])
+
+    batch_id = str(uuid4())
+    logger.info(
+        "Dashboard bulk statement upload",
+        extra={"batch_id": batch_id, "file_count": len(uploads)},
+    )
+
+    temp_paths: list[tuple[Path, str]] = []
+    try:
+        for upload in uploads:
+            safe_basename = Path(upload.filename or "upload.pdf").name
+            content = await upload.read()
+            logger.info(
+                "Dashboard bulk file received",
+                extra={
+                    "batch_id": batch_id,
+                    "original_basename": safe_basename,
+                    "byte_length": len(content),
+                },
+            )
+            suffix = ".pdf" if safe_basename.lower().endswith(".pdf") else ".bin"
+            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                tmp_path = Path(tmp.name)
+                tmp.write(content)
+            temp_paths.append((tmp_path, safe_basename))
+
+        results = ingest_pdf_batch(temp_paths)
+    finally:
+        for tmp_path, _name in temp_paths:
+            if tmp_path.exists():
+                tmp_path.unlink()
+
+    return HTMLResponse(content=_render_batch_result_html(results))
+
+
+async def _upload_single_statement_html(upload: UploadFile) -> HTMLResponse:
+    """Legacy one-file dashboard ingest → ledger or error fragment."""
+    if not upload.filename or not upload.filename.lower().endswith(".pdf"):
+        return _upload_error_html(
+            "INVALID_FILE",
+            "Only PDF documents are supported for ingestion.",
+        )
+
+    content = await upload.read()
     if not content:
-        return HTMLResponse(
-            content=env.get_template("upload_error.html").render(
-                error_code="EMPTY_FILE",
-                detail="Uploaded file payload is empty.",
-            ),
-            status_code=status.HTTP_400_BAD_REQUEST,
+        return _upload_error_html(
+            "EMPTY_FILE",
+            "Uploaded file payload is empty.",
         )
     if not content.startswith(b"%PDF"):
-        return HTMLResponse(
-            content=env.get_template("upload_error.html").render(
-                error_code="INVALID_PDF",
-                detail="Uploaded file is not a valid PDF binary.",
-            ),
-            status_code=status.HTTP_400_BAD_REQUEST,
+        return _upload_error_html(
+            "INVALID_PDF",
+            "Uploaded file is not a valid PDF binary.",
         )
 
-    safe_basename = Path(file.filename).name
+    safe_basename = Path(upload.filename).name
     logger.info(
         "Dashboard statement upload",
         extra={"original_basename": safe_basename, "byte_length": len(content)},
@@ -693,13 +789,7 @@ async def upload_statement_html(
             tmp_path.unlink()
 
     if isinstance(result, IngestFailure):
-        return HTMLResponse(
-            content=env.get_template("upload_error.html").render(
-                error_code=result.error_code,
-                detail=result.detail,
-            ),
-            status_code=status.HTTP_400_BAD_REQUEST,
-        )
+        return _upload_error_html(result.error_code, result.detail)
 
     assert isinstance(result, IngestSuccess)
     ledgers = _ledger_blocks_for_run(result.run_id)
