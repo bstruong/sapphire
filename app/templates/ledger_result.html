@@ -38,6 +38,8 @@
                         <th>Date</th>
                         <th>Category</th>
                         <th>Description</th>
+                        <th>Payee</th>
+                        <th>Spend</th>
                         <th class="amount">Amount</th>
                     </tr>
                 </thead>
@@ -47,6 +49,24 @@
                         <td class="muted num">{{ txn.post_date }}</td>
                         <td><span class="chip chip-neutral">{{ txn.category | human_label }}</span></td>
                         <td>{{ txn.description }}</td>
+                        <td class="muted">{% if txn.payee %}{{ txn.payee }}{% else %}—{% endif %}</td>
+                        <td>
+                            <form class="spend-label-form"
+                                  hx-post="/api/v1/dashboard/ledger/label"
+                                  hx-target="#pane-vault-body"
+                                  hx-swap="innerHTML">
+                                <input type="hidden" name="transaction_id" value="{{ txn.transaction_id }}">
+                                <input type="hidden" name="statement_id" value="{{ block.statement_id }}">
+                                <select name="spend_category_slug" class="select"
+                                        aria-label="Spend category for {{ txn.description }}"
+                                        onchange="this.form.requestSubmit()">
+                                    <option value=""{% if not txn.spend_category_slug %} selected{% endif %}>Uncategorized</option>
+                                    {% for cat in block.spend_categories %}
+                                    <option value="{{ cat.slug }}"{% if txn.spend_category_slug == cat.slug %} selected{% endif %}>{{ cat.display_name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </form>
+                        </td>
                         <td class="amount num{% if txn.amount_cents > 0 %} pos{% endif %}{% if txn.amount_cents < 0 %} neg{% endif %}">{{ txn.amount_cents | usd_cents }}</td>
                     </tr>
                     {% endfor %}
