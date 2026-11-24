@@ -115,6 +115,10 @@ class TestChaseCreditCardParse:
         assert summary.new_balance_cents == 3282
         assert len(txns) == 3
         assert sum(t.amount_cents for t in txns) == statement.net_change_cents
+        # Merchant-ish descriptions become payee; never invent beyond printed text.
+        assert all(t.payee is not None for t in txns)
+        assert all(t.payee == t.description for t in txns)
+        assert any("." in (t.payee or "") or "*" in (t.payee or "") for t in txns)
 
     def test_schema_markers_do_not_require_account_summary_heading(
         self, tmp_path: Path

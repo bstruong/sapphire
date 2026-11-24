@@ -40,7 +40,7 @@
 
 ## Implications for next PRs
 
-1. **Payee ingest (step 2):** add nullable `transactions.payee` + `CanonicalTransaction.payee: str | None`. Chase card adapter fills payee from description when merchant-like; Schwab checking leaves `NULL` for opaque types. Synthetic fixtures use `SYNTHETIC …` payees.
+1. **Payee ingest (step 2):** nullable `transactions.payee` + `CanonicalTransaction.payee: str | None` via migration `0003_transactions_payee.sql` and `app.adapters.payee.payee_from_description`. Chase fills payee from printed description; Schwab checking leaves `NULL` for opaque types.
 2. **Manual labels (step 3):** allowed on opaque rows (PM memory / amount context) — labels do not require payee.
 3. **Rules / Vault suggest (steps 4 / 6):** require non-null payee; skip opaque rows loudly (no silent invent).
 4. **Pie (step 5):** unlabeled spend → **Uncategorized** bucket regardless of payee presence.

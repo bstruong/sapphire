@@ -18,20 +18,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 REDACTED = ROOT / "tests" / "fixtures" / "redacted"
 
-# Bank-type strings that are not counterparty/payee signals.
-OPAQUE_BANK_TYPES = frozenset(
-    {
-        "Electronic Withdrawal",
-        "Electronic Deposit",
-        "Interest Paid",
-        "Incoming Wire",
-        "Funds Transfer from Brokerage",
-        "Mobile Deposit",
-        "Check",
-        "ACH Bill Pay",
-    }
-)
-
 
 def _pass(msg: str) -> None:
     print(f"[PASS] {msg}")
@@ -39,23 +25,6 @@ def _pass(msg: str) -> None:
 
 def _fail(msg: str) -> None:
     print(f"[FAIL] {msg}")
-
-
-def _payee_candidate(description: str) -> str | None:
-    """Inventory policy: opaque bank types → no payee; else printed text.
-
-    Empty / whitespace-only descriptions fail loud (never invent).
-    """
-    if not isinstance(description, str):
-        raise TypeError("description must be str")
-    stripped = description.strip()
-    if not stripped:
-        raise ValueError("payee candidate refuses empty description")
-    if stripped in OPAQUE_BANK_TYPES:
-        return None
-    # Zelle / ACH lines may include a counterparty after the type keyword;
-    # treat pure type matches as opaque; anything else keeps printed text.
-    return stripped
 
 
 def _descriptions_from_pdf(adapter: object, pdf: Path) -> list[str]:
@@ -79,7 +48,9 @@ def main() -> int:
     failures = 0
 
     from app.adapters.chase_credit_card import ChaseCreditCardAdapter
+    from app.adapters.payee import payee_from_description
     from app.adapters.schwab_checking import SchwabCheckingAdapter
+    from app.models.exceptions import TokenError
 
     chase_pdf = REDACTED / "chase_credit_card_sample.pdf"
     schwab_pdf = REDACTED / "schwab_checking_sample.pdf"
@@ -103,8 +74,8 @@ def main() -> int:
     chase_payees = []
     for desc in chase_descs:
         try:
-            cand = _payee_candidate(desc)
-        except ValueError as exc:
+            cand = payee_from_description(desc)
+        except TokenError as exc:
             _fail(f"Chase description rejected unexpectedly: {exc}")
             failures += 1
             continue
@@ -132,7 +103,6 @@ def main() -> int:
     if merchantish:
         _pass(f"Chase includes merchant-ish payee text ({merchantish[0]!r})")
     else:
-        # Payment thank-you alone still counts as non-opaque printed text.
         _pass("Chase payee candidates are non-opaque printed description text")
 
     # --- Happy / negative contrast: Schwab checking is opaque ---
@@ -144,8 +114,8 @@ def main() -> int:
         return 1
 
     schwab_counts = Counter(schwab_descs)
-    opaque = sum(1 for d in schwab_descs if _payee_candidate(d) is None)
-    non_opaque = [d for d in schwab_descs if _payee_candidate(d) is not None]
+    opaque = sum(1 for d in schwab_descs if payee_from_description(d) is None)
+    non_opaque = [d for d in schwab_descs if payee_from_description(d) is not None]
 
     if len(schwab_descs) < 1:
         _fail("Schwab fixture produced zero transactions")
@@ -172,7 +142,6 @@ def main() -> int:
         failures += 1
 
     if non_opaque:
-        # Fixture may gain richer lines later; still report without inventing.
         _pass(
             f"Schwab non-opaque printed lines kept as candidates "
             f"({len(non_opaque)}): e.g. {non_opaque[0]!r}"
@@ -184,15 +153,14 @@ def main() -> int:
     print("\n[Negative: refuse empty / whitespace payee candidates]")
     for bad in ("", "   ", "\t"):
         try:
-            _payee_candidate(bad)
-            _fail(f"Expected ValueError for {bad!r}")
+            payee_from_description(bad)
+            _fail(f"Expected TokenError for {bad!r}")
             failures += 1
-        except ValueError:
+        except TokenError:
             _pass(f"Loud reject for empty/whitespace description {bad!r}")
 
-    # Opaque map returns None (not invented merchant)
     for opaque_desc in ("Electronic Withdrawal", "Interest Paid"):
-        if _payee_candidate(opaque_desc) is not None:
+        if payee_from_description(opaque_desc) is not None:
             _fail(f"Opaque type {opaque_desc!r} must not yield a payee")
             failures += 1
         else:

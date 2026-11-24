@@ -168,11 +168,22 @@ class CanonicalTransaction(BaseModel):
     description: str = Field(min_length=1)
     transaction_category: TransactionCategory
     balance_after_cents: int | None = None
+    payee: str | None = None
 
     @model_validator(mode="after")
     def validate_non_zero_amount(self) -> CanonicalTransaction:
         if self.amount_cents == 0:
             raise ValueError("amount_cents must be strictly non-zero")
+        return self
+
+    @model_validator(mode="after")
+    def validate_payee(self) -> CanonicalTransaction:
+        if self.payee is None:
+            return self
+        if not self.payee.strip():
+            raise ValueError("payee must be non-empty when present")
+        if self.payee != self.payee.strip():
+            raise ValueError("payee must not include leading/trailing whitespace")
         return self
 
 

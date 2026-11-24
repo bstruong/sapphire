@@ -281,6 +281,8 @@ class SchwabCheckingAdapter(StandardDepositoryAdapter):
             validate_category_for_domain(self.account_domain, category)
             validate_category_sign(self.account_domain, category, amount_cents)
 
+            from app.adapters.payee import payee_from_description
+
             txns.append(
                 CanonicalTransaction(
                     statement_id=statement_id,
@@ -289,6 +291,7 @@ class SchwabCheckingAdapter(StandardDepositoryAdapter):
                     description=raw_desc,
                     transaction_category=category,
                     balance_after_cents=balance_after,
+                    payee=payee_from_description(raw_desc),
                 )
             )
             running = balance_after

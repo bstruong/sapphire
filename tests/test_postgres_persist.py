@@ -299,11 +299,74 @@ class TestPostgresCanonicalPersistence:
         assert len(txns_out) == 2
         assert txns_out[0].amount_cents == 60000
         assert txns_out[1].amount_cents == -10000
+        assert txns_out[0].payee is None
+        assert txns_out[1].payee is None
 
         # Check run status updated
         updated_run = get_extraction_run(db_conn, run.run_id)
         assert updated_run is not None
         assert updated_run.status == RunStatus.CANONICAL_PERSISTED
+
+    def test_persist_transaction_payee_roundtrip(
+        self, db_conn: psycopg.Connection
+    ) -> None:
+        payload = RawPayload(
+            content_sha256="e" * 64,
+            byte_length=1200,
+            original_basename="payee.pdf",
+        )
+        run = ExtractionRun(
+            raw_payload_id=payload.raw_payload_id,
+            adapter_id="standard_depository",
+            adapter_version="1.0.0",
+            status=RunStatus.VALIDATED,
+        )
+        page = RawPage(run_id=run.run_id, page_number=1, page_text="Payee statement")
+        persist_raw_extraction(
+            db_conn, RawExtraction(payload=payload, run=run, pages=[page])
+        )
+
+        account = Account(
+            institution="Payee Bank",
+            account_mask="*0000",
+            account_domain=AccountDomain.DEPOSITORY,
+            account_type=AccountType.CHECKING,
+        )
+        statement = CanonicalStatement(
+            account_id=account.account_id,
+            run_id=run.run_id,
+            raw_payload_id=payload.raw_payload_id,
+            statement_start_date=datetime.date(2026, 10, 1),
+            statement_end_date=datetime.date(2026, 10, 31),
+            opening_balance_cents=10000,
+            closing_balance_cents=5000,
+            net_change_cents=-5000,
+        )
+        summary = DepositorySummary(
+            statement_id=statement.statement_id,
+            deposits_cents=0,
+            withdrawals_cents=5000,
+            interest_paid_cents=0,
+            fees_cents=0,
+        )
+        txns = [
+            CanonicalTransaction(
+                statement_id=statement.statement_id,
+                post_date=datetime.date(2026, 10, 5),
+                amount_cents=-5000,
+                description="Electronic Withdrawal",
+                transaction_category=TransactionCategory.WITHDRAWAL,
+                payee="SYNTHETIC Rent Co",
+            ),
+        ]
+        persist_canonical_statement(db_conn, account, statement, summary, txns)
+        db_conn.commit()
+        res = get_canonical_statement(db_conn, statement.statement_id)
+        assert res is not None
+        _stmt, _summary, txns_out = res
+        assert len(txns_out) == 1
+        assert txns_out[0].payee == "SYNTHETIC Rent Co"
+        assert txns_out[0].description == "Electronic Withdrawal"
 
     def test_persist_credit_card_statement_happy_path(
         self, db_conn: psycopg.Connection
