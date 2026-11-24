@@ -138,7 +138,7 @@ Before a pull request can be merged, the Reviewer Agent verifies:
 - [ ] **Manual UI QA:** If the PR changes a browser-visible surface, the description has start command, click path, expected screen result, and (when needed) a synthetic seed the PM can load. Otherwise it states UI QA is not applicable.
 
 ### 3. Automated Review Gates
-- **GitHub Actions CI (`.github/workflows/ci.yml`):** Automatically executes linting, formatting check, and the 90% coverage test gate on all PRs and pushes to `main` (no mutmut on PRs).
+- **GitHub Actions CI (`.github/workflows/ci.yml`):** Automatically executes linting and formatting on all PRs/pushes to `main`. The coverage gate (≥90%) runs only when `app/`, `tests/`, Python under `scripts/`, lockfile, or workflow paths change. Playwright + E2E run only for UI-surface paths (`app/api|routers|templates|static|presentation|middleware`, `tests/test_e2e_dashboard.py`, lockfile, `ci.yml`). Docs / `.cursor/` / shell-script-only PRs skip pytest and browsers (lint + agent-review still run). No mutmut on PRs.
 - **Mutation Nightly (`.github/workflows/mutation-nightly.yml`):** Runs on `[self-hosted, watchtower]`. Path-filtered **diff** on `main` pushes; `workflow_dispatch` default **critical-only**, opt-in `full_allowlist=true` for rare full audits (**no weekly cron**); score gate. Not a PR required check.
 - **Agent Review Workflow (`.github/workflows/agent-review.yml`):** Automatically executes static invariant scans via `scripts/agent_review.py` and provides automated critique.
 

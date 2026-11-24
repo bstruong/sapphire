@@ -21,38 +21,64 @@ def ci_text() -> str:
 def test_playwright_cache_key_uses_os_arch_and_version(ci_text: str) -> None:
     assert "actions/cache@v4" in ci_text
     assert "~/.cache/ms-playwright" in ci_text
-    assert "playwright-${{ runner.os }}" in ci_text
+    assert "playwright-chromium-${{ runner.os }}" in ci_text
     assert "runner.arch" in ci_text
     assert "steps.playwright.outputs.version" in ci_text
 
 
 def test_playwright_cold_install_only_on_cache_miss(ci_text: str) -> None:
     assert "cache-hit != 'true'" in ci_text
-    assert "playwright install --with-deps" in ci_text
+    assert "playwright install --with-deps chromium" in ci_text
     assert "cache-hit == 'true'" in ci_text
-    assert "playwright install-deps" in ci_text
+    assert "playwright install-deps chromium" in ci_text
 
 
-def test_docs_markdown_path_skips_e2e_and_playwright(ci_text: str) -> None:
+def test_docs_and_non_python_script_paths_skip_tests_and_e2e(ci_text: str) -> None:
     assert "dorny/paths-filter@v3" in ci_text
+    assert "needs_tests:" in ci_text
     assert "needs_e2e:" in ci_text
     for required in (
         "app/**",
         "tests/**",
-        "scripts/**",
+        "scripts/**/*.py",
         "pyproject.toml",
         "uv.lock",
         ".github/workflows/**",
-        "**/*.py",
     ):
         assert required in ci_text
+    # Broad globs that forced Playwright on shell scripts / any .py are gone.
+    assert "- 'scripts/**'" not in ci_text
+    assert "- '**/*.py'" not in ci_text
     assert "--ignore=tests/test_e2e_dashboard.py" in ci_text
+    assert "needs_tests != 'true'" in ci_text
     assert "needs_e2e != 'true'" in ci_text
+
+
+def test_e2e_filter_targets_ui_surface_only(ci_text: str) -> None:
+    e2e_block = ci_text.split("needs_e2e:", 1)[1]
+    # Truncate at the next top-level step key after the filter block.
+    e2e_block = e2e_block.split("- name:", 1)[0]
+    for required in (
+        "app/api/**",
+        "app/routers/**",
+        "app/templates/**",
+        "app/static/**",
+        "app/presentation/**",
+        "app/middleware/**",
+        "tests/test_e2e_dashboard.py",
+        ".github/workflows/ci.yml",
+    ):
+        assert required in e2e_block
+    # Pipeline-only / adapter-only changes must not pull Playwright.
+    assert "app/pipeline/**" not in e2e_block
+    assert "app/adapters/**" not in e2e_block
 
 
 def test_app_paths_keep_coverage_gate_with_e2e(ci_text: str) -> None:
     assert "needs_e2e == 'true'" in ci_text
+    assert "needs_tests == 'true'" in ci_text
     assert "--cov-fail-under=90" in ci_text
     assert "runs-on: ubuntu-latest" in ci_text
     assert "self-hosted" not in ci_text
     assert "check_mutation_score.py" not in ci_text
+    assert "uv sync --frozen" in ci_text

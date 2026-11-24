@@ -4,8 +4,10 @@
 Target Audience: Product Manager & Quality Assurance
 Purpose:
     Verify PR CI policy without reading the workflow diff: Playwright browsers
-    are cached, docs/markdown-only changes skip Playwright + E2E, app-touching
-    paths keep the coverage gate with E2E, and PR CI remains on ubuntu-latest.
+    are cached (Chromium only), docs/.cursor/non-Python-script changes skip
+    pytest + Playwright entirely, non-UI app changes keep coverage without E2E,
+    UI-touching paths keep the coverage gate with E2E, and PR CI stays on
+    ubuntu-latest.
 
 Usage:
     uv run python scripts/qa_ci_pr_slim.py
@@ -35,54 +37,75 @@ def assert_condition(name: str, passed: bool, detail: str = "") -> None:
 
 
 def test_playwright_cache_policy(ci: str) -> None:
-    print_header("1. Playwright browser cache (avoid cold --with-deps every run)")
+    print_header("1. Playwright browser cache (Chromium; avoid cold --with-deps)")
     assert_condition(
         "actions/cache@v4 restores ~/.cache/ms-playwright",
         "actions/cache@v4" in ci and "~/.cache/ms-playwright" in ci,
     )
     assert_condition(
-        "Cache key includes runner OS, arch, and Playwright version",
-        "playwright-${{ runner.os }}" in ci
+        "Cache key includes chromium, runner OS, arch, and Playwright version",
+        "playwright-chromium-${{ runner.os }}" in ci
         and "runner.arch" in ci
         and "steps.playwright.outputs.version" in ci,
     )
     assert_condition(
-        "Cold install uses playwright install --with-deps only on cache miss",
-        "cache-hit != 'true'" in ci and "playwright install --with-deps" in ci,
+        "Cold install uses playwright install --with-deps chromium on cache miss",
+        "cache-hit != 'true'" in ci and "playwright install --with-deps chromium" in ci,
     )
     assert_condition(
-        "Cache hit installs OS deps only (playwright install-deps)",
-        "cache-hit == 'true'" in ci and "playwright install-deps" in ci,
+        "Cache hit installs Chromium OS deps only (playwright install-deps chromium)",
+        "cache-hit == 'true'" in ci and "playwright install-deps chromium" in ci,
     )
 
 
 def test_path_aware_e2e_skip(ci: str) -> None:
-    print_header("2. Path-aware E2E / Playwright skip (docs & markdown-only)")
+    print_header("2. Path-aware test + E2E skip (docs / non-Python scripts / non-UI)")
     assert_condition(
-        "dorny/paths-filter@v3 drives needs_e2e",
-        "dorny/paths-filter@v3" in ci and "needs_e2e:" in ci,
+        "dorny/paths-filter@v3 drives needs_tests and needs_e2e",
+        "dorny/paths-filter@v3" in ci and "needs_tests:" in ci and "needs_e2e:" in ci,
     )
     for path in (
         "app/**",
         "tests/**",
-        "scripts/**",
+        "scripts/**/*.py",
         "pyproject.toml",
         "uv.lock",
         ".github/workflows/**",
-        "**/*.py",
     ):
         assert_condition(
-            f"needs_e2e includes {path}",
+            f"needs_tests includes {path}",
             path in ci,
-            "App-touching / lockfile / workflow / Python paths keep full suite.",
+            "App/tests/python-script/lockfile/workflow paths keep the coverage gate.",
+        )
+    for path in (
+        "app/api/**",
+        "app/templates/**",
+        "app/static/**",
+        "tests/test_e2e_dashboard.py",
+    ):
+        assert_condition(
+            f"needs_e2e includes UI path {path}",
+            path in ci,
+            "UI surface paths keep Playwright + E2E.",
         )
     assert_condition(
-        "Docs/markdown-only path runs pytest without E2E",
+        "Broad scripts/** and **/*.py are not used as E2E triggers",
+        "scripts/**/*.py" in ci and "'**/*.py'" not in ci and '"**/*.py"' not in ci,
+        "Shell-only script PRs (e.g. check-diff-size.sh) must not install Playwright.",
+    )
+    assert_condition(
+        "Non-UI test path can run pytest without E2E",
         "--ignore=tests/test_e2e_dashboard.py" in ci and "needs_e2e != 'true'" in ci,
     )
     assert_condition(
-        "App-touching path keeps coverage gate including E2E",
-        "needs_e2e == 'true'" in ci and "--cov-fail-under=90" in ci,
+        "Docs/non-code path can skip pytest entirely",
+        "needs_tests != 'true'" in ci,
+    )
+    assert_condition(
+        "UI-touching path keeps coverage gate including E2E",
+        "needs_e2e == 'true'" in ci
+        and "needs_tests == 'true'" in ci
+        and "--cov-fail-under=90" in ci,
     )
 
 

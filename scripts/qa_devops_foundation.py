@@ -86,27 +86,28 @@ def test_ci_cd_workflow(root_dir: Path) -> None:
         "uv run ruff format --check ." in content,
     )
     assert_condition(
-        "CI executes `uv run pytest --cov=app --cov-fail-under=90 -v`",
+        "CI executes pytest with coverage gate (>90%)",
         "--cov-fail-under=90" in content,
     )
     assert_condition(
-        "CI caches Playwright browsers keyed on OS/arch + version",
+        "CI caches Playwright Chromium keyed on OS/arch + version",
         "actions/cache@v4" in content
         and "~/.cache/ms-playwright" in content
-        and "playwright-${{ runner.os }}" in content,
+        and "playwright-chromium-${{ runner.os }}" in content,
     )
     assert_condition(
-        "CI installs Playwright --with-deps only on cache miss",
+        "CI installs Playwright Chromium --with-deps only on cache miss",
         "cache-hit != 'true'" in content
-        and "playwright install --with-deps" in content
-        and "playwright install-deps" in content,
+        and "playwright install --with-deps chromium" in content
+        and "playwright install-deps chromium" in content,
     )
     assert_condition(
-        "CI path-filters docs/markdown-only away from Playwright + E2E",
+        "CI path-filters docs/non-UI away from Playwright + E2E",
         "dorny/paths-filter@v3" in content
         and "needs_e2e" in content
+        and "needs_tests" in content
         and "--ignore=tests/test_e2e_dashboard.py" in content,
-        "Docs/specs / markdown-only PRs skip browser install; app paths keep E2E.",
+        "Docs/.cursor/shell-script PRs skip pytest+browser; UI paths keep E2E.",
     )
     assert_condition(
         "PR CI stays on ubuntu-latest (not self-hosted)",
