@@ -5,6 +5,9 @@ import time
 import pytest
 from playwright.sync_api import Page, expect
 
+# Serialize under xdist: live_server binds fixed :8000 (not parallel-safe).
+pytestmark = pytest.mark.xdist_group("e2e_dashboard")
+
 
 @pytest.fixture(scope="module")
 def live_server():
