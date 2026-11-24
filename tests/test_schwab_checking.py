@@ -125,6 +125,64 @@ class TestSchwabCheckingPeriodDates:
         assert start.isoformat() == "2026-08-01"
         assert end.isoformat() == "2026-08-31"
 
+    def test_cross_month_period_split_across_lines(self, tmp_path: Path) -> None:
+        """Cross-month chrome puts end date on the next line after name/mask.
+
+        Live Schwab Bank PDFs (e.g. Feb/Mar/Jun closing dates) extract as::
+
+            Account Number January 31, 2026 to
+            SYNTHETIC HOLDER [ACCOUNT_1] February 27, 2026
+        """
+        pdf = _render_lines(
+            tmp_path / "schwab_cross_month.pdf",
+            [
+                "Charles Schwab Bank Investor Checking Member FDIC",
+                "Statement Period",
+                "Account Number January 31, 2026 to",
+                "SYNTHETIC HOLDER [ACCOUNT_1] February 27, 2026",
+                "Beginning Balance $100.00",
+                "Deposits and Credits $0.00",
+                "Interest Paid $0.00",
+                "Withdrawals and Other Debits $0.00",
+                "Other Fees $0.00",
+                "Ending Balance $100.00",
+            ],
+        )
+        adapter = SchwabCheckingAdapter()
+        assert adapter.matches(pdf) is True
+        raw = extract_pdf_to_raw(
+            file_path=pdf,
+            adapter_id=adapter.adapter_id,
+            adapter_version=adapter.adapter_version,
+            original_basename=pdf.name,
+        )
+        mask, acc_type, start, end = adapter.parse_header(raw)
+        assert mask == "[ACCOUNT_1]"
+        assert acc_type == AccountType.CHECKING
+        assert start.isoformat() == "2026-01-31"
+        assert end.isoformat() == "2026-02-27"
+
+    def test_cross_month_period_same_line(self, tmp_path: Path) -> None:
+        """Same-line Month D, YYYY to Month D, YYYY must keep working."""
+        pdf = _render_lines(
+            tmp_path / "schwab_cross_month_same.pdf",
+            [
+                "Charles Schwab Bank Checking Member FDIC",
+                "Account Number: [ACCOUNT_2]",
+                "Statement Period May 30, 2026 to June 30, 2026",
+            ],
+        )
+        adapter = SchwabCheckingAdapter()
+        raw = extract_pdf_to_raw(
+            file_path=pdf,
+            adapter_id=adapter.adapter_id,
+            adapter_version=adapter.adapter_version,
+            original_basename=pdf.name,
+        )
+        _mask, _type, start, end = adapter.parse_header(raw)
+        assert start.isoformat() == "2026-05-30"
+        assert end.isoformat() == "2026-06-30"
+
 
 class TestSchwabCheckingParse:
     def test_parse_redacted_pdf_reconciles(self) -> None:
